@@ -1,0 +1,34 @@
+{
+  "name": "roaming-mode-incremental-reading",
+  "author": "ebAobS",
+  "url": "https://github.com/ebAobS/roaming-mode-incremental-reading",
+  "version": "1.0.0",
+  "minAppVersion": "2.9.0",
+  "backends": [
+    "windows",
+    "linux",
+    "darwin",
+    "docker"
+  ],
+  "frontends": [
+    "desktop",
+    "browser-desktop"
+  ],
+  "displayName": {
+    "en_US": "Roaming Mode Incremental Reading",
+    "zh_CN": "漫游式渐进阅读"
+  },
+  "description": {
+    "en_US": "The core of incremental reading is reading later on, rather than fighting against forgetting.",
+    "zh_CN": "渐进阅读的核心是稍后阅读，而不是对抗遗忘。"
+  },
+  "readme": {
+    "en_US": "README.md",
+    "zh_CN": "README_zh_CN.md"
+  },
+  "funding": {
+    "custom": [
+      "https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
+    ]
+  }
+}

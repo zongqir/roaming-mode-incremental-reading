@@ -96,7 +96,7 @@
         content = content.replace(/contenteditable="true"/g, 'contenteditable="false"')
         // 获取总文档数
         const total = await pluginInstance.kernelApi.getRootBlocksCount()
-        tips = `哇哦，穿越大山，跨过大河，在${total}篇文档中，我又为您找到了一篇新的~`
+        tips = `总共${total}篇文档中，新一篇文档来了。它踏碎星辰来看你，三秋霜雪作马蹄。`
       } else {
         // 常规模式
         currentRndRes = await getOnceModeDoc()
@@ -115,7 +115,7 @@
         // 处理空文档
         if (isContentEmpty(content)) {
           clearDoc()
-          tips = "当前文档正文为空，2s 后继续下一个"
+          tips = "白纸素笺无墨迹，且待片刻换新篇。正文为空，2秒后继续下一个。"
           setTimeout(async () => {
             await doRandomDoc()
           }, 2000)
@@ -126,7 +126,7 @@
         
         // 获取总文档数
         const total = await getTotalDocCount()
-        tips = `已漫游到新文档，共${total}篇文档，还有${unReviewedCount}篇文档尚未访问，加油💪~`
+        tips = `总共${total}篇文档中，新一篇文档来了。它踏碎星辰来看你，三秋霜雪作马蹄。还有${unReviewedCount}篇文档未曾相见，行至水穷处，坐看云起时。`
       }
     } catch (e) {
       clearDoc()
@@ -210,7 +210,7 @@
       if (isContentEmpty(content)) {
         pluginInstance.logger.warn("文档内容为空，将在2秒后继续下一个")
         clearDoc()
-        tips = "当前文档正文为空，2s 后继续下一个"
+        tips = "白纸素笺无墨迹，且待片刻换新篇。文档为空，2秒后继续下一个。"
         setTimeout(async () => {
           await doProgressiveRandomDoc()
         }, 2000)
@@ -228,7 +228,7 @@
       const total = await pr.getTotalDocCount()
       pluginInstance.logger.info(`符合条件的文档总数: ${total}`)
       
-      tips = `已漫游到新文档，共${total}篇文档，请根据需要调整下方指标值`
+      tips = `总共${total}篇文档中，新一篇文档来了。它踏碎星辰来看你，三秋霜雪作马蹄。请依心调整下方指标，量尺寸，度长短。`
       
     } catch (e) {
       pluginInstance.logger.error("漫游式渐进阅读失败", e)
@@ -392,7 +392,7 @@
   const clearDoc = () => {
     currentRndId = undefined
     content = ""
-    tips = "条件已改变，请重新漫游！"
+    tips = "条件已改变，请重新漫游！待从头，收拾旧山河，朝天阙！"
   }
 
   const notebookChange = async function () {
@@ -454,7 +454,7 @@
   }
 
   const openHelpDoc = () => {
-    window.open("https://siyuan.wiki/s/20250421162737-l6p21h5")
+    window.open("https://github.com/ebAobS/roaming-mode-incremental-reading/blob/main/README_zh_CN.md")
   }
 
   // 导出函数，让外部可以调用

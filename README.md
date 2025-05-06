@@ -9,7 +9,11 @@ The core principle of incremental reading is intelligent recommendation for "rea
 ## Project Information
 
 - **Project Repository**: [https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
-- **Based on**: [Random Doc Plugin](https://github.com/terwer/siyuan-plugin-random-doc.git) (Author: [terwer](https://github.com/terwer))
+- **Based on**: [siyuan-plugin-random-doc](https://github.com/terwer/siyuan-plugin-random-doc.git) (Author: [terwer](https://github.com/terwer))
+
+## Preview
+
+![preview.png](./preview.png)
 
 ## Core Philosophy
 
@@ -57,7 +61,7 @@ For more update records, please check [CHANGELOG](https://github.com/ebAobS/roam
 
 ## Acknowledgements
 
-- Special thanks to [terwer](https://github.com/terwer) for developing the original [Random Doc Plugin](https://github.com/terwer/siyuan-plugin-random-doc.git), on which this plugin is based
+- Special thanks to [terwer](https://github.com/terwer) for developing the original [siyuan-plugin-random-doc](https://github.com/terwer/siyuan-plugin-random-doc.git), on which this plugin is based
 - Thanks to [frostime](https://github.com/siyuan-note/plugin-sample-vite-svelte) for the project template
 
 ## Donate

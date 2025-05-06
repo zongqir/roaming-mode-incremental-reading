@@ -2,20 +2,20 @@
 
 # 漫游式渐进阅读
 
-![](./icon.png)
+![icon.png](./icon.png)
 
 渐进阅读的核心要点，是智能推荐的稍后阅读，并不是对抗遗忘。制作闪卡后复习的核心才是对抗遗忘。
 
 ## 项目信息
 
 - **项目地址**：[https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
-- **基于项目**：[文档漫游插件](https://github.com/terwer/siyuan-plugin-random-doc.git)（作者：[terwer](https://github.com/terwer)）
+- **基于项目**：[思源插件：文档漫游](https://github.com/terwer/siyuan-plugin-random-doc.git)（作者：[terwer](https://github.com/terwer)）
 
 ## 核心理念
 
 渐进阅读应该与闪卡区分开来：
 
-- **闪卡**复习算法原理是**遗忘曲线**，这方面思源闪卡系统+FSRS算法已经足够善。多年使用Anki、SuperMemo的经验告诉我，卡片的["最小信息原则"](https://www.kancloud.cn/ankigaokao/incremental_learning/2454060#_30)极其重要。
+- **闪卡**复习算法原理是**遗忘曲线**，这方面思源闪卡系统+FSRS算法已经足够完善。多年使用Anki、SuperMemo的经验告诉我，卡片的["最小信息原则"](https://www.kancloud.cn/ankigaokao/incremental_learning/2454060#_30)极其重要。
 - **渐进阅读**面对的是大段文本，先天不符合["最小信息原则"](https://www.kancloud.cn/ankigaokao/incremental_learning/2454060#_30)。目前大多数渐进阅读解决方案惯性地使用遗忘曲线为原理的复习算法（如FSRS）来推荐复习文章，我个人认为这并不合理。
 
 对于一篇洋洋洒洒的文章，很难**单纯的使用记忆程度**作为下次是否**被推荐复习的标准**。真正的**标准应该是多元**的，比如难度、学习进度、学习内容的重要程度、紧急程度、感兴趣程度等。
@@ -27,6 +27,10 @@
 相关阅读：[《渐进式学习_SuperMemo对渐进阅读的算法实现思路》](https://zhuanlan.zhihu.com/p/307996163)
 
 本着"如无必要，勿增实体"原则，渐进阅读的"摘录"、"制卡"功能，本插件并不涉及。点击"编辑"按钮"可在新标签页打开您正在渐进学习的文章。在这里，利用思源集市中其他很多插件可以继续实现"摘录"、"制卡"等后续流程。
+
+## 界面预览
+
+![preview.png](./preview.png)
 
 ## 功能特点
 
@@ -45,7 +49,7 @@
 
 ## 改进计划
 
-根据优先级的轮盘赌算法，好像并没有很智能。能否使用深度学习等方法，提高推荐的智能性？欢迎各位大佬提意见、二次开发。
+根据优先级的轮盘赌算法，好像并没有很智能。能否使用深度学习等方法，提高推荐的智能性？欢迎各位大佬提意见、二次开发。也欢迎讨论渐进学习相关经验。
 
 ## 更新历史
 
@@ -57,12 +61,12 @@
 
 ## 感谢
 
-- 特别感谢 [terwer](https://github.com/terwer) 开发的原版[文档漫游插件](https://github.com/terwer/siyuan-plugin-random-doc.git)，本插件是在其基础上改进而来
+- 特别感谢 [terwer](https://github.com/terwer) 开发的原版[思源插件：文档漫游](https://github.com/terwer/siyuan-plugin-random-doc.git)，本插件是在其基础上改进而来
 - 感谢 [frostime](https://github.com/siyuan-note/plugin-sample-vite-svelte) 提供的项目模板
 
-## 捐助
+## 要饭乞讨
 
-如果这个插件对您有所帮助，请我喝杯咖啡吧，这将鼓励我持续更新并创造更多有用的工具！
+如果这个插件对您有所帮助，给我午餐加个鸡腿吧！谢谢老板！祝您吃嘛嘛香，干啥啥顺，钞票多到数不过来！顺风顺水顺财神！
 
 <div>
 <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png" alt="donate" style="height:300px;" />

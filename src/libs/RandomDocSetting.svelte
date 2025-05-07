@@ -5,7 +5,7 @@
   import { storeName } from "../Constants"
   import { showMessage } from "siyuan"
   import IncrementalReviewer from "../service/IncrementalReviewer"
-  import { Metric } from "../models/IncrementalConfig"
+  import type { Metric } from "../models/IncrementalConfig"
 
   // props
   export let pluginInstance: RandomDocPlugin

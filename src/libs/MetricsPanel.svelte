@@ -27,7 +27,7 @@
   import { createEventDispatcher, onMount } from "svelte"
   import RandomDocPlugin from "../index"
   import IncrementalReviewer from "../service/IncrementalReviewer"
-  import { Metric } from "../models/IncrementalConfig"
+  import type { Metric } from "../models/IncrementalConfig"
 
   // props
   export let pluginInstance: RandomDocPlugin

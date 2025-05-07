@@ -42,7 +42,7 @@ Following the principle of "Don't create entities unnecessarily", the "extractin
 ## Usage Guide
 
 1. **Install Plugin**: Search for "Roaming Mode Incremental Reading" in the SiYuan plugin market and install
-2. **Set Parameters**: Right-click the plugin icon, configure incremental mode, customize the indicators and weights you need.
+2. **Set Parameters**: Right-click the plugin icon in the top bar to access the settings page, customize the indicators and weights you need.
 3. **Start Incremental Reading**: Read and study the recommended articles, click the "edit" button to open in a new tab, and perform extraction, card-making and other operations.
 4. **Adjust Parameters**: Use parameter adjustment instead of traditional incremental reading's "forget", "remember" buttons as feedback.
 5. **Read Later**: When you're tired of this article, bored with reading, encounter difficulties and don't want to continue, whatever the reason, click "Continue Roaming" to intelligently recommend and read the next article.
@@ -53,13 +53,16 @@ The roulette wheel algorithm based on priority doesn't seem very intelligent. Is
 
 ## Update History
 
-**v1.1.0 Update (2025.05.25)**
-- Updated author information and copyright notices
-- Added systematic hierarchy annotations for better code maintenance
-- Standardized comment style for better readability
-- Fixed email and project URL information
+**v1.1.0 Update (2025.05.08)**
+- Improved stability of the priority-based roulette wheel recommendation algorithm
+- Added prompt information when calculating probability
+- Modified the settings page, right-click the top bar plugin icon to enter the settings page
+- Set the default value of all document indicators to 5
+- Added actions to update all documents when modifying indicator information to ensure indicator values are not 0
+- When viewing document indicator information, automatically corrects indicators with 0 or empty values to default value 5
+- Added roaming history viewing function
 
-**v1.0.1 Update (2025.05.13)**
+**v1.0.1 Update (2025.05.07)**
 - Enhanced prompt messages with poetic expressions
 - Improved help documentation links to GitHub repository
 

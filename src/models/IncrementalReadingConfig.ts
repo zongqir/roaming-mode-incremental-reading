@@ -20,7 +20,7 @@
  */
 
 export enum ReviewMode {
-  Progressive = "progressive",
+  Incremental = "incremental",
   Once = "once",
 }
 
@@ -32,7 +32,7 @@ export enum FilterMode {
 /**
  * 存储对象
  */
-class ProgressiveReadingConfig {
+class IncrementalReadingConfig {
   /**
    * 笔记本ID
    */
@@ -61,7 +61,7 @@ class ProgressiveReadingConfig {
   /**
    * 复习模式
    */
-  reviewMode: ReviewMode = ReviewMode.Progressive
+  reviewMode: ReviewMode = ReviewMode.Incremental
 
   /**
    * 过滤模式
@@ -76,7 +76,7 @@ class ProgressiveReadingConfig {
   /**
    * 渐进模式配置ID
    */
-  progressiveConfigId = "progressive_config"
+  incrementalConfigId = "incremental_config"
 
   /**
    * 是否排除今日已访问的文档
@@ -90,4 +90,4 @@ class ProgressiveReadingConfig {
   }
 }
 
-export default ProgressiveReadingConfig 
+export default IncrementalReadingConfig 

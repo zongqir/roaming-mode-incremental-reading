@@ -1,12 +1,12 @@
 <!--
-  - Copyright (c) 2023, Terwer . All rights reserved.
+  - Copyright (c) 2025, ebAobS . All rights reserved.
   - DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   -
   - This code is free software; you can redistribute it and/or modify it
   - under the terms of the GNU General Public License version 2 only, as
-  - published by the Free Software Foundation.  Terwer designates this
+  - published by the Free Software Foundation.  ebAobS designates this
   - particular file as subject to the "Classpath" exception as provided
-  - by Terwer in the LICENSE file that accompanied this code.
+  - by ebAobS in the LICENSE file that accompanied this code.
   -
   - This code is distributed in the hope that it will be useful, but WITHOUT
   - ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
@@ -18,16 +18,16 @@
   - 2 along with this work; if not, write to the Free Software Foundation,
   - Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
   -
-  - Please contact Terwer, Shenzhen, Guangdong, China, youweics@163.com
-  - or visit www.terwer.space if you need additional information or have any
+  - Please contact ebAobS, ebAobs@outlook.com
+  - or visit https://github.com/ebAobS/roaming-mode-incremental-reading if you need additional information or have any
   - questions.
   -->
 
 <script lang="ts">
   import { onMount } from "svelte"
   import RandomDocPlugin from "../index"
-  import RandomDocConfig from "../models/RandomDocConfig"
   import IncrementalReviewer from "../service/IncrementalReviewer"
+  import RandomDocConfig, { ReviewMode } from "../models/RandomDocConfig"
   import { Metric } from "../models/IncrementalConfig"
   import { showMessage, Dialog } from "siyuan"
 
@@ -41,65 +41,69 @@
   let metrics: Metric[] = []
   let newMetric: Partial<Metric> = { id: "", name: "", weight: 10, value: 5, description: "" }
 
+  // 进度状态
+  let isProcessing = false
+  let processProgress = 0
+  let processTotal = 0
+  let processCurrent = 0
+
   // 初始化
   onMount(async () => {
-    try {
-      reviewer = new IncrementalReviewer(storeConfig, pluginInstance)
-      await reviewer.initIncrementalConfig()
-      metrics = reviewer.getMetrics()
-    } catch (error) {
-      console.error("初始化指标失败:", error)
-    }
+    reviewer = new IncrementalReviewer(storeConfig, pluginInstance)
+    await reviewer.initIncrementalConfig()
+    metrics = reviewer.getMetrics()
   })
 
   // 保存配置
-  const saveConfig = async () => {
-    if (reviewer) {
-      await reviewer.saveIncrementalConfig()
-      dialog.close()
-    }
-  }
-  
-  // 将所有文档中指标值为0的指标统一改为默认值5
-  async function updateZeroMetricsToDefault() {
+  async function saveConfig() {
     try {
-      const filterCondition = reviewer.buildFilterCondition ? reviewer.buildFilterCondition() : ""
+      if (reviewer) {
+        // 先保存配置
+        await reviewer.saveIncrementalConfig()
+        
+        // 开始处理文档，显示进度条
+        isProcessing = true
+        processProgress = 0
+        processCurrent = 0
+        processTotal = 0
+        
+        // 修复所有文档的指标，传入进度回调
+        const repairResult = await reviewer.repairAllDocumentMetrics((current, total) => {
+          processCurrent = current
+          processTotal = total
+          processProgress = Math.floor((current / total) * 100)
+        })
+        
+        // 重置进度状态
+        isProcessing = false
+        
+        // 格式化统计信息
+        const stats = []
+        if (repairResult.updatedDocs > 0) {
+          // 添加修复的指标信息
+          if (repairResult.updatedMetrics.length > 0) {
+            const updatedMetricsSummary = repairResult.updatedMetrics
+              .map(m => `"${m.name}"(${m.count}篇)`)
+              .join("、")
+            stats.push(`修复了${repairResult.updatedMetrics.reduce((sum, m) => sum + m.count, 0)}个指标值(${updatedMetricsSummary})`)
+          }
+          
+          // 添加删除的指标信息
+          if (repairResult.deletedMetricsCount > 0) {
+            stats.push(`删除了${repairResult.deletedMetricsCount}个无效指标`)
+      }
       
-      for (const metric of metrics) {
-        // 构建查询，查找具有该指标且值为0的文档
-        const sql = `
-          SELECT id FROM blocks 
-          WHERE type = 'd' 
-          ${filterCondition}
-          AND id IN (
-            SELECT block_id FROM attributes 
-            WHERE name = 'custom-metric-${metric.id}'
-            AND value = '0.0'
-          )
-        `
-        
-        const result = await pluginInstance.kernelApi.sql(sql)
-        if (result.code !== 0) {
-          throw new Error(result.msg)
+      // 显示总结信息
+          const statsSummary = stats.join("，")
+          showMessage(`已处理${repairResult.totalDocs}篇文档，${repairResult.updatedDocs}篇被更新。${statsSummary}`, 7000)
+      } else {
+          showMessage(`已处理${repairResult.totalDocs}篇文档，所有文档的指标均已完整设置`, 3000)
         }
-        
-        const docs = result.data as any[]
-        if (!docs || docs.length === 0) continue
-        
-        // 更新这些文档的指标值为5.0
-        await Promise.all(
-          docs.map(async (doc) => {
-            await pluginInstance.kernelApi.setBlockAttrs(doc.id, {
-              [`custom-metric-${metric.id}`]: "5.0"
-            })
-          })
-        )
-        
-        showMessage(`已将${docs.length}篇文档的"${metric.name}"指标从0更新为默认值5`, 3000)
       }
     } catch (error) {
-      pluginInstance.logger.error("更新指标默认值失败", error)
-      showMessage("更新指标默认值失败: " + error.message, 5000, "error")
+      // 发生错误时也要重置进度状态
+      isProcessing = false
+      showMessage("保存配置失败: " + error.message, 5000, "error")
     }
   }
 
@@ -172,7 +176,7 @@
   }
 </script>
 
-<div class="progressive-config">
+<div class="incremental-config">
   <h2>渐进式模式配置</h2>
   
   <div class="config-section">
@@ -249,13 +253,13 @@
     </div>
     
     <div class="form-row">
-      <div class="form-group description-field">
-        <label for="newMetricDescription">描述</label>
+      <div class="form-group">
+        <label for="newMetricDescription">描述 (可选)</label>
         <input 
           type="text" 
           id="newMetricDescription" 
           bind:value={newMetric.description} 
-          placeholder="指标的描述信息（可选）"
+          placeholder="指标的详细描述"
         />
       </div>
       
@@ -265,71 +269,99 @@
     </div>
   </div>
   
-  <div class="button-row">
-    <button class="save-button" on:click={saveConfig}>保存配置</button>
+  <!-- 进度条显示 -->
+  {#if isProcessing}
+    <div class="progress-section">
+      <h3>正在修复文档指标</h3>
+      <div class="progress-info">
+        正在处理 {processCurrent} / {processTotal} 篇文档 ({processProgress}%)
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" style="width: {processProgress}%"></div>
+      </div>
+      <p class="help-text">正在扫描并修复文档指标，分页处理中，请耐心等待...</p>
+      <p class="help-text">大量文档处理可能需要较长时间，请勿关闭窗口</p>
+    </div>
+  {/if}
+  
+  <div class="button-group">
+    <button class="primary-button" on:click={saveConfig}>保存配置</button>
     <button class="cancel-button" on:click={closeDialog}>关闭</button>
   </div>
 </div>
 
 <style>
-  .progressive-config {
-    padding: 15px;
-    max-height: 80vh;
-    overflow-y: auto;
+  .incremental-config {
+    padding: 16px;
+    font-size: 14px;
+    color: var(--b3-theme-on-background);
   }
   
   h2 {
     margin-top: 0;
-    margin-bottom: 20px;
-    font-size: 20px;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 10px;
-  }
-  
-  .config-section {
-    margin-bottom: 25px;
+    margin-bottom: 16px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--b3-theme-on-background);
+    border-bottom: 1px solid var(--b3-border-color);
+    padding-bottom: 8px;
   }
   
   h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
     font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--b3-theme-on-background);
   }
   
   .help-text {
-    font-size: 0.9em;
-    color: #666;
-    margin-top: 0;
-    margin-bottom: 15px;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    margin-bottom: 12px;
+  }
+  
+  .config-section, .reset-section {
+    margin-bottom: 20px;
+    padding: 12px;
+    border-radius: 4px;
+    background-color: var(--b3-theme-surface);
   }
   
   .metrics-table {
     width: 100%;
     border-collapse: collapse;
-    margin-bottom: 15px;
+    margin-bottom: 16px;
   }
   
-  .metrics-table th,
-  .metrics-table td {
-    padding: 8px;
+  .metrics-table th, .metrics-table td {
+    padding: 8px 12px;
     text-align: left;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--b3-border-color);
   }
   
   .metrics-table th {
-    background-color: #f5f5f5;
+    font-weight: 500;
+    color: var(--b3-theme-on-background);
+    background-color: var(--b3-theme-background);
   }
   
-  .metrics-table input {
-    width: 60px;
-    padding: 4px;
-    text-align: center;
+  input[type="text"], input[type="number"] {
+    padding: 6px 8px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    width: 100%;
+    color: var(--b3-theme-on-background);
+    background-color: var(--b3-theme-background);
+  }
+  
+  input[type="number"] {
+    width: 80px;
   }
   
   .form-row {
     display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-bottom: 12px;
   }
   
   .form-group {
@@ -338,71 +370,116 @@
     flex-direction: column;
   }
   
-  .description-field {
-    flex: 2;
-  }
-  
   .form-group label {
-    margin-bottom: 5px;
-    font-size: 0.9em;
-  }
-  
-  .form-group input {
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-  }
-  
-  .button-row {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 20px;
-  }
-  
-  button {
-    padding: 8px 16px;
-    border-radius: 4px;
-    border: none;
-    cursor: pointer;
-  }
-  
-  .save-button {
-    background-color: #4caf50;
-    color: white;
-  }
-  
-  .save-button:hover {
-    background-color: #45a049;
-  }
-  
-  .cancel-button {
-    background-color: #f0f0f0;
-    color: #333;
-  }
-  
-  .cancel-button:hover {
-    background-color: #e0e0e0;
-  }
-  
-  .add-button {
-    background-color: #2196f3;
-    color: white;
-    margin-top: auto;
-  }
-  
-  .add-button:hover {
-    background-color: #0b7dda;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
   }
   
   .delete-button {
-    background-color: #f44336;
-    color: white;
     padding: 4px 8px;
-    font-size: 0.9em;
+    background-color: var(--b3-theme-error-lighter);
+    color: var(--b3-theme-error);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
   }
   
   .delete-button:hover {
-    background-color: #da190b;
+    background-color: var(--b3-theme-error-light);
+  }
+  
+  .add-button {
+    padding: 6px 12px;
+    background-color: var(--b3-theme-primary-lighter);
+    color: var(--b3-theme-primary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 20px;
+  }
+  
+  .add-button:hover {
+    background-color: var(--b3-theme-primary-light);
+  }
+  
+  .reset-button {
+    padding: 6px 12px;
+    background-color: var(--b3-theme-error-lighter);
+    color: var(--b3-theme-error);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .reset-button:hover {
+    background-color: var(--b3-theme-error-light);
+  }
+  
+  .button-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+  }
+  
+  .primary-button {
+    padding: 8px 16px;
+    background-color: var(--b3-theme-primary);
+    color: var(--b3-theme-on-primary);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .primary-button:hover {
+    background-color: var(--b3-theme-primary-light);
+  }
+  
+  .cancel-button {
+    padding: 8px 16px;
+    background-color: var(--b3-theme-surface);
+    color: var(--b3-theme-on-surface);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .cancel-button:hover {
+    background-color: var(--b3-theme-background);
+  }
+  
+  /* 进度条样式 */
+  .progress-section {
+    margin: 16px 0;
+    padding: 16px;
+    background-color: var(--b3-theme-surface);
+    border-radius: 4px;
+    border: 1px solid var(--b3-theme-primary-lightest);
+  }
+  
+  .progress-section h3 {
+    margin-top: 0;
+    color: var(--b3-theme-primary);
+  }
+  
+  .progress-info {
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  
+  .progress-bar-container {
+    height: 10px;
+    background-color: var(--b3-theme-background);
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  
+  .progress-bar {
+    height: 100%;
+    background-color: var(--b3-theme-primary);
+    border-radius: 5px;
+    transition: width 0.5s ease;
   }
 </style> 

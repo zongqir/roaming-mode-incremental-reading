@@ -53,8 +53,17 @@ The roulette wheel algorithm based on priority doesn't seem very intelligent. Is
 
 ## Update History
 
-**v1.0.0 Major Update (2025.05.06)**
+**v1.1.0 Update (2025.05.25)**
+- Updated author information and copyright notices
+- Added systematic hierarchy annotations for better code maintenance
+- Standardized comment style for better readability
+- Fixed email and project URL information
 
+**v1.0.1 Update (2025.05.13)**
+- Enhanced prompt messages with poetic expressions
+- Improved help documentation links to GitHub repository
+
+**v1.0.0 Major Update (2025.05.06)**
 - First available version
 
 For more update records, please check [CHANGELOG](https://github.com/ebAobS/roaming-mode-incremental-reading/blob/main/CHANGELOG.md)

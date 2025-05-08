@@ -117,7 +117,23 @@
           
         // 获取总文档数
         const total = await pluginInstance.kernelApi.getRootBlocksCount()
-          tips = `${total}篇文档已剩${total}。展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。`
+        
+        // 获取已访问文档数量（通过SQL方式）
+        let remainingCount = total
+        try {
+          // 确保pr已初始化
+          if (!pr) {
+            pr = new IncrementalReviewer(storeConfig, pluginInstance)
+            await pr.initIncrementalConfig()
+          }
+          const visitedCount = await pr.getTodayVisitedCount()
+          remainingCount = total - visitedCount
+        } catch (error) {
+          pluginInstance.logger.warn("获取已访问文档数量失败，使用总数作为剩余数", error)
+          // 失败时保持剩余数等于总数
+        }
+        
+        tips = `${total}篇文档已剩${remainingCount}。展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。`
         } catch (error) {
           clearDoc()
           tips = "获取文档内容失败：" + error.message
@@ -167,7 +183,8 @@
         
         // 获取总文档数
         const total = await getTotalDocCount()
-          tips = `${total}篇文档已剩${total}。展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。`
+        // 使用unReviewedCount表示剩余文档数
+        tips = `${total}篇文档已剩${unReviewedCount}。展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。`
         } catch (error) {
           clearDoc()
           tips = "获取文档内容失败：" + error.message

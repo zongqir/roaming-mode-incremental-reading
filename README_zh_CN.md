@@ -76,7 +76,7 @@
 - 特别感谢 [terwer](https://github.com/terwer) 开发的原版[思源插件：文档漫游](https://github.com/terwer/siyuan-plugin-random-doc.git)，本插件是在其基础上改进而来
 - 感谢 [frostime](https://github.com/siyuan-note/plugin-sample-vite-svelte) 提供的项目模板
 
-## 要饭乞讨
+## 乞讨
 
 如果这个插件对您有所帮助，给我午餐加个鸡腿吧！谢谢老板！祝您吃嘛嘛香，干啥啥顺，钞票多到数不过来！顺风顺水顺财神！
 

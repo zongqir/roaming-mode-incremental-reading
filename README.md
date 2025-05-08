@@ -53,6 +53,10 @@ The roulette wheel algorithm based on priority doesn't seem very intelligent. Is
 
 ## Update History
 
+**v1.1.1 Update (2025.05.12)**
+- Fixed incorrect display of remaining document count in one-pass mode
+- Optimized calculation of remaining document count in custom SQL mode
+
 **v1.1.0 Update (2025.05.08)**
 - Improved stability of the priority-based roulette wheel recommendation algorithm
 - Added prompt information when calculating probability

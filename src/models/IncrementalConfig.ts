@@ -45,7 +45,7 @@
  * 定义文档评估的标准和权重
  */
 export interface Metric {
-  /** 1.1.1 指标唯一标识符 */
+  /** 1.2.0 指标唯一标识符 */
   id: string;
   /** 1.1.2 指标显示名称 */
   name: string;

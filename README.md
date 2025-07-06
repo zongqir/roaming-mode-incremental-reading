@@ -56,6 +56,12 @@ The roulette wheel algorithm based on priority doesn't seem very intelligent. Is
 
 ## Update History
 
+**v1.2.0 Update (2025.07.06)**
+- For specific documents, they can be opened in the incremental reading page. Usage: browse the document first, then click the top bar plugin button to jump
+- Removed read-only mode in incremental reading page, allowing simple editing
+- Changed the step size of metric parameter adjustment buttons from 0.1 to 1
+- Notebook selection supports multi-selection and free combination
+
 **v1.1.1 Update (2025.05.12)**
 - Fixed incorrect display of remaining document count in one-pass mode
 - Optimized calculation of remaining document count in custom SQL mode

@@ -128,13 +128,20 @@ class RandomDocConfig {
   excludeTodayVisited = true
 
   /**
-   * 2.11 构造函数
+   * 2.11 是否在启动思源时自动重置已访问文档记录
+   * 控制是否在每次启动思源时自动清空已访问文档记录
+   */
+  autoResetOnStartup = false
+
+  /**
+   * 2.12 构造函数
    * 初始化配置对象，设置默认值
    */
   constructor() {
     this.filterMode = this.filterMode || FilterMode.Notebook
     this.rootId = this.rootId || ""
     this.excludeTodayVisited = this.excludeTodayVisited !== false
+    this.autoResetOnStartup = this.autoResetOnStartup ?? false
   }
 }
 

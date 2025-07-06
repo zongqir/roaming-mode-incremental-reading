@@ -1064,6 +1064,19 @@ const initEditableContent = async () => {
     if (reviewMode === ReviewMode.Incremental) {
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
+      
+      // 检查是否需要启动时自动重置
+      if (storeConfig?.autoResetOnStartup) {
+        try {
+          pluginInstance.logger.info("检测到启动时自动重置设置，开始重置已访问文档记录...")
+          const filterCondition = pr.buildFilterCondition(storeConfig)
+          await pr.resetTodayVisits(filterCondition)
+          showMessage("启动时自动重置已访问文档记录完成", 3000)
+        } catch (error) {
+          pluginInstance.logger.error("启动时自动重置失败:", error)
+          showMessage("启动时自动重置失败: " + error.message, 5000, "error")
+        }
+      }
     }
 
     // 检查是否已经有内容，如果有则不自动开始漫游

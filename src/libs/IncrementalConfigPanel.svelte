@@ -269,6 +269,52 @@
     </div>
   </div>
   
+  <!-- 自动重置设置 -->
+  <div class="config-section">
+    <h3>{pluginInstance.i18n.autoResetSettings}</h3>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>
+          <input
+            type="checkbox"
+            bind:checked={storeConfig.autoResetOnStartup}
+          />
+          {pluginInstance.i18n.autoResetOnStartup}
+        </label>
+        <p class="help-text">{pluginInstance.i18n.autoResetOnStartupTip}</p>
+      </div>
+    </div>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>
+          <input
+            type="checkbox"
+            bind:checked={storeConfig.autoResetEnabled}
+          />
+          {pluginInstance.i18n.enableAutoReset}
+        </label>
+      </div>
+    </div>
+    
+    {#if storeConfig.autoResetEnabled}
+      <div class="form-row">
+        <div class="form-group">
+          <label for="resetInterval">{pluginInstance.i18n.resetInterval}</label>
+          <input
+            type="number"
+            id="resetInterval"
+            bind:value={storeConfig.resetIntervalHours}
+            min="1"
+            max="720"
+          />
+          <p class="help-text">{pluginInstance.i18n.resetIntervalHelp}</p>
+        </div>
+      </div>
+    {/if}
+  </div>
+  
   <!-- 进度条显示 -->
   {#if isProcessing}
     <div class="progress-section">

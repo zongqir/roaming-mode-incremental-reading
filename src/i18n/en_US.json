@@ -14,5 +14,12 @@
   "sqlContentTip": "Custom SQL, note that it must be a valid JSON array, for example: [{\"name\":\"默认\",\"sql\":\"sql1\"]",
   "customSqlEmpty": "Custom SQL is detected to be enabled, please set it. Custom SQL cannot be empty.",
   "dataPanel": "Data panel",
-  "help": "Help"
+  "help": "Help",
+  "autoResetSettings": "Auto Reset Settings",
+  "enableAutoReset": "Auto reset visited document records on startup",
+  "enableAutoResetTip": "When enabled, automatically clear visited document records each time SiYuan starts, restarting the reading process",
+  "resetInterval": "Reset interval (hours)",
+  "resetIntervalHelp": "Set the time interval for auto reset, range 1-720 hours (30 days)",
+  "autoResetOnStartup": "Auto reset on startup",
+  "autoResetOnStartupTip": "Automatically clear visited document records each time SiYuan starts"
 }

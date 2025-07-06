@@ -83,10 +83,28 @@ class IncrementalReadingConfig {
    */
   excludeTodayVisited = true
 
+  /**
+   * 是否启用自动重置已访问记录
+   */
+  autoResetEnabled = false
+
+  /**
+   * 重置周期（小时）
+   */
+  resetIntervalHours = 24
+
+  /**
+   * 是否在启动思源时自动重置已访问文档记录
+   */
+  autoResetOnStartup = false
+
   constructor() {
     this.filterMode = this.filterMode || FilterMode.Notebook
     this.rootId = this.rootId || ""
     this.excludeTodayVisited = this.excludeTodayVisited !== false
+    this.autoResetEnabled = this.autoResetEnabled ?? false
+    this.resetIntervalHours = this.resetIntervalHours ?? 24
+    this.autoResetOnStartup = this.autoResetOnStartup ?? false
   }
 }
 

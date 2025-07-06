@@ -6,7 +6,7 @@
 
 The core principle of incremental reading is intelligent recommendation for "read later", not combating forgetting. Combating forgetting is the core of reviewing flashcards.
 
-## wechat：ebAobSS
+## Welcome to add WeChat: ebAobS, join the WeChat discussion group
 
 ## Project Information
 
@@ -14,7 +14,7 @@ The core principle of incremental reading is intelligent recommendation for "rea
 - **Project Repository**: [https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
 - **Discussion Thread**: [Roaming Mode Incremental Reading](https://ld246.com/article/1746802777105) 
 
-## Preview
+## Interface Preview
 
 ![preview.png](./preview.png)
 
@@ -52,9 +52,12 @@ Following the principle of "Don't create entities unnecessarily", the "extractin
 
 ## Improvement Plans
 
-The roulette wheel algorithm based on priority doesn't seem very intelligent. Is it possible to use methods like deep learning to improve the intelligence of recommendations? Welcome everyone to give suggestions and secondary development.
+The roulette wheel algorithm based on priority doesn't seem very intelligent. Is it possible to use methods like deep learning to improve the intelligence of recommendations? Welcome everyone to give suggestions and secondary development. Also welcome to discuss incremental learning related experiences.
 
 ## Update History
+
+**v1.2.1 Update (2025.07.07)**
+- Added setting option: Automatically reset visited document records each time SiYuan is started
 
 **v1.2.0 Update (2025.07.06)**
 - For specific documents, they can be opened in the incremental reading page. Usage: browse the document first, then click the top bar plugin button to jump
@@ -91,7 +94,7 @@ For more update records, please check [CHANGELOG](https://github.com/ebAobS/roam
 
 ## Donate
 
-If this plugin is helpful to you, feel free to buy me a cup of coffee! Your support encourages me to keep updating and creating more useful tools!
+If this plugin is helpful to you, feel free to buy me lunch with a chicken leg! Thank you boss! Wish you good appetite, smooth sailing in everything, and money so much you can't count it all! Smooth wind, smooth water, smooth wealth!
 
 <div>
 <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png" alt="donate" style="height:300px;" />

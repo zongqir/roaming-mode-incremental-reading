@@ -17,6 +17,7 @@
   let sqlContent = JSON.stringify([])
   let reviewMode = ReviewMode.Incremental
   let excludeTodayVisited = true
+  let autoResetOnStartup = false
   
   // 渐进模式配置相关
   let reviewer: IncrementalReviewer
@@ -36,6 +37,7 @@
       storeConfig.sql = sqlContent
       storeConfig.reviewMode = reviewMode
       storeConfig.excludeTodayVisited = excludeTodayVisited
+      storeConfig.autoResetOnStartup = autoResetOnStartup
       await pluginInstance.saveData(storeName, storeConfig)
       
       // 如果是渐进模式，保存渐进配置
@@ -183,6 +185,7 @@
     customSqlEnabled = storeConfig?.customSqlEnabled ?? false
     reviewMode = storeConfig?.reviewMode ?? ReviewMode.Incremental
     excludeTodayVisited = storeConfig?.excludeTodayVisited !== false
+    autoResetOnStartup = storeConfig?.autoResetOnStartup ?? false
     sqlContent =
       storeConfig?.sql ??
       JSON.stringify([
@@ -250,6 +253,16 @@
             <div class="b3-label__text form-item-tip">勾选后，今日已访问过的文档将不会再次出现</div>
           </div>
           <input class="b3-switch" type="checkbox" bind:checked={excludeTodayVisited} />
+        </div>
+      </div>
+      
+      <div class="fn__block form-item">
+        <div class="form-item-row">
+          <div>
+            <span class="form-item-label">{pluginInstance.i18n.autoResetOnStartup}</span>
+            <div class="b3-label__text form-item-tip">{pluginInstance.i18n.autoResetOnStartupTip}</div>
+          </div>
+          <input class="b3-switch" type="checkbox" bind:checked={autoResetOnStartup} />
         </div>
       </div>
       

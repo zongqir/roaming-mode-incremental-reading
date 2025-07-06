@@ -24,7 +24,7 @@
   -->
 
 <script lang="ts">
-  import { onMount } from "svelte"
+  import { onMount, onDestroy } from "svelte"
   import { storeName } from "../Constants"
   import RandomDocConfig, { FilterMode, ReviewMode } from "../models/RandomDocConfig"
   import { Dialog, openTab, showMessage } from "siyuan"
@@ -41,7 +41,8 @@
   let isLoading = false
   let storeConfig: RandomDocConfig
   let notebooks = []
-  let toNotebookId = ""
+  let selectedNotebooks = [] // 存储选中的笔记本ID
+  let showNotebookSelector = false // 控制下拉框显示
   let filterMode = FilterMode.Notebook
   let rootId = ""
   let title = pluginInstance.i18n.welcomeTitle
@@ -50,6 +51,7 @@
   let unReviewedCount = 0
   let content = ""
   let reviewMode = ReviewMode.Incremental
+  let toNotebookId = "" // 当前选中的笔记本ID
 
   let sqlList: any[] = []
   let currentSql = ""
@@ -64,6 +66,12 @@
   let roamingHistory = []
   let isLoadingHistory = false
   let historyDialog = null
+
+  let protyleContainer: HTMLDivElement | null = null;
+  let protyleInstance: any = null;
+  let editableContent = "";
+  let isEditing = false;
+  let saveTimeout: any = null;
 
   // methods
   export const doRandomDoc = async () => {
@@ -109,11 +117,11 @@
           }
           
           const doc = docResult.data as any
-        title = rootBlock.content
-        content = doc.content ?? ""
+          title = rootBlock.content
+          content = doc.content ?? ""
           
-        // 只读
-        content = content.replace(/contenteditable="true"/g, 'contenteditable="false"')
+          // 初始化可编辑内容
+          await initEditableContent()
           
         // 获取总文档数
         const total = await pluginInstance.kernelApi.getRootBlocksCount()
@@ -133,7 +141,7 @@
           // 失败时保持剩余数等于总数
         }
         
-        tips = `${total}篇文档已剩${remainingCount}。展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。`
+        tips = `展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${remainingCount}。`
         } catch (error) {
           clearDoc()
           tips = "获取文档内容失败：" + error.message
@@ -159,14 +167,17 @@
           }
           
         // 获取文档内容
-          const docResult = await pluginInstance.kernelApi.getDoc(currentRndId)
-          if (!docResult || docResult.code !== 0) {
-            throw new Error("获取文档内容失败")
-          }
-          
-          const doc = docResult.data as any
+        const docResult = await pluginInstance.kernelApi.getDoc(currentRndId)
+        if (!docResult || docResult.code !== 0) {
+          throw new Error("获取文档内容失败")
+        }
+        
+        const doc = docResult.data as any
         title = rootBlock.content
         content = doc.content ?? ""
+        
+        // 初始化可编辑内容
+        await initEditableContent()
           
         // 处理空文档
         if (isContentEmpty(content)) {
@@ -178,13 +189,11 @@
           return
         }
           
-        // 只读
-        content = content.replace(/contenteditable="true"/g, 'contenteditable="false"')
         
         // 获取总文档数
         const total = await getTotalDocCount()
         // 使用unReviewedCount表示剩余文档数
-        tips = `${total}篇文档已剩${unReviewedCount}。展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。`
+        tips = `展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${unReviewedCount}。`
         } catch (error) {
           clearDoc()
           tips = "获取文档内容失败：" + error.message
@@ -280,8 +289,9 @@
         const doc = docResult.data as any
         content = doc.content || ""
         
-        // 只读模式
-        content = content.replace(/contenteditable="true"/g, 'contenteditable="false"')
+        // 初始化可编辑内容
+        await initEditableContent()
+        
       } catch (error) {
         pluginInstance.logger.error("获取文档内容时出错:", error)
         content = "获取文档内容时出错: " + error.message
@@ -347,12 +357,136 @@
       const visitedCount = await pr.getTodayVisitedCount()
       const remainingCount = total - visitedCount
       
-      tips = `${total}篇文档已剩${remainingCount}。展卷乃无言的情意，以${selectionProbabilityText}的机遇，踏碎星辰来看你，三秋霜雪作马蹄。`
+      tips = `展卷乃无言的情意，以${selectionProbabilityText}的机遇，踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${remainingCount}。`
       
     } catch (e) {
       pluginInstance.logger.error("渐进复习出错:", e)
       content = "渐进复习出错: " + (e.message || e)
       tips = "发生了意外错误，请检查控制台日志获取详细信息。"
+    } finally {
+      isLoading = false
+    }
+  }
+
+  /**
+   * 漫游指定文档
+   * 在渐进阅读面板中显示指定的文档
+   * 
+   * @param docId 要漫游的文档ID
+   */
+  export const roamSpecificDocument = async (docId: string) => {
+    if (isLoading) {
+      pluginInstance.logger.warn("上次操作还未结束，忽略")
+      return
+    }
+
+    try {
+      isLoading = true
+      title = "加载中..."
+      content = ""
+      tips = "正在加载指定文档..."
+      
+      // 清空当前文档ID和指标数据，避免显示上一篇文章的数据
+      currentRndId = undefined
+      docPriority = {}
+      docMetrics = []
+
+      pluginInstance.logger.info(`开始漫游指定文档: ${docId}`)
+
+      // 验证文档是否存在
+      const blockResult = await pluginInstance.kernelApi.getBlockByID(docId)
+      if (!blockResult) {
+        content = "指定的文档不存在"
+        tips = "或许文档已被删除，请检查文档ID是否正确。"
+        isLoading = false
+        return
+      }
+
+      // 设置当前文档ID
+      currentRndId = docId
+      
+      // 设置标题
+      title = blockResult.content || "无标题"
+      
+      // 获取文档详细内容
+      const docResult = await pluginInstance.kernelApi.getDoc(docId)
+      
+      if (!docResult || docResult.code !== 0) {
+        content = "获取文档详情失败"
+        tips = "或许文档已被删除，请检查文档ID是否正确。"
+        isLoading = false
+        return
+      }
+      
+      // 设置内容
+      const doc = docResult.data as any
+      content = doc.content || ""
+      
+      // 初始化可编辑内容
+      await initEditableContent()
+      
+      // 处理空文档
+      if (isContentEmpty(content)) {
+        content = "该文档内容为空"
+        tips = "白纸素笺无墨迹，且待片刻换新篇。"
+        isLoading = false
+        return
+      }
+
+      // 如果是渐进模式，获取文档的优先级数据
+      if (storeConfig.reviewMode === ReviewMode.Incremental) {
+        try {
+          // 检查渐进复习器是否已初始化
+          if (!pr) {
+            pr = new IncrementalReviewer(storeConfig, pluginInstance)
+            await pr.initIncrementalConfig()
+          }
+          
+          // 保存当前处理的文档ID，用于后续校验
+          const processingDocId = currentRndId
+          
+          // 获取文档的优先级数据
+          const docPriorityData = await pr.getDocPriorityData(processingDocId)
+          
+          // 检查文档ID是否已经改变
+          if (processingDocId !== currentRndId) {
+            pluginInstance.logger.warn(`文档ID已改变，放弃处理 ${processingDocId} 的优先级数据`)
+            return
+          }
+          
+          // 使用文档指标对象
+          docPriority = docPriorityData.metrics
+          
+          // 获取指标配置
+          docMetrics = pr.getMetrics()
+          
+          if (!docMetrics || docMetrics.length === 0) {
+            pluginInstance.logger.error("无法获取指标配置，尝试重新初始化...")
+            // 重新初始化审阅器以获取指标配置
+            await pr.initIncrementalConfig()
+            docMetrics = pr.getMetrics()
+            
+            if (!docMetrics || docMetrics.length === 0) {
+              pluginInstance.logger.error("重新初始化后仍无法获取指标配置")
+              content = "获取指标配置失败，请检查渐进阅读设置。"
+              tips = "无法加载指标配置，但可以继续阅读。"
+              isLoading = false
+              return
+            }
+          }
+        } catch (error) {
+          pluginInstance.logger.error("获取文档优先级数据失败:", error)
+          content = "获取文档优先级数据失败: " + error.message
+          tips = "无法加载优先级数据，但可以继续阅读。"
+        }
+      }
+      
+      tips = `展卷乃无言的情意，踏碎星辰来看你，三秋霜雪作马蹄。正在漫游指定文档。`
+      
+    } catch (error) {
+      pluginInstance.logger.error("漫游指定文档失败:", error)
+      content = "漫游指定文档失败: " + error.message
+      tips = "发生错误，请检查日志获取详细信息。"
     } finally {
       isLoading = false
     }
@@ -464,7 +598,7 @@
 
   const onNotebookChange = async function () {
     // 笔记本选择切换
-    storeConfig.notebookId = toNotebookId
+    storeConfig.notebookId = selectedNotebooks.join(',') // 使用逗号分隔的ID字符串
     await pluginInstance.saveData(storeName, storeConfig)
     
     // 重置文档
@@ -480,7 +614,7 @@
       await doIncrementalRandomDoc()
     }
     
-    pluginInstance.logger.info("storeConfig saved notebookId =>", storeConfig)
+    pluginInstance.logger.info("storeConfig saved notebookIds =>", selectedNotebooks)
   }
 
   const onSqlChange = async function () {
@@ -556,8 +690,45 @@
     })
   }
 
+  // 处理内容区域点击事件
+  const handleContentClick = async (event: MouseEvent | KeyboardEvent) => {
+    // 如果点击的是按钮或其他交互元素，不处理
+    const target = event.target as HTMLElement
+    if (target.closest('button') || target.closest('.action-btn-group') || target.closest('.metrics-panel')) {
+      return
+    }
+    
+    // 如果有当前文档ID，打开可编辑的文档标签页
+    if (currentRndId) {
+      await openDocEditor()
+    }
+  }
+
   const openHelpDoc = () => {
     window.open("https://github.com/ebAobS/roaming-mode-incremental-reading/blob/main/README_zh_CN.md")
+  }
+
+  // 切换笔记本选择
+  function toggleNotebook(notebookId) {
+    if (selectedNotebooks.includes(notebookId)) {
+      selectedNotebooks = selectedNotebooks.filter(id => id !== notebookId)
+    } else {
+      selectedNotebooks = [...selectedNotebooks, notebookId]
+    }
+    // 不再自动触发保存，等待用户点击确定
+  }
+
+  // 全选/取消全选
+  // 当没有选择任何笔记本时，默认全选
+  $: if (selectedNotebooks.length === 0 && notebooks.length > 0) {
+    selectedNotebooks = notebooks.map(notebook => notebook.id)
+    // 注意：这里不调用onNotebookChange，因为初始化时不需要触发刷新
+  }
+
+  // 根据笔记本ID获取笔记本名称
+  function getNotebookName(notebookId) {
+    const notebook = notebooks.find(n => n.id === notebookId)
+    return notebook ? notebook.name : '未知笔记本'
   }
 
   // 导出函数，让外部可以调用
@@ -746,6 +917,110 @@
     }
   }
 
+  // 防抖保存函数
+  const debouncedSave = (content: string) => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+    saveTimeout = setTimeout(async () => {
+      await saveContent(content);
+    }, 1000); // 1秒后保存
+  };
+
+  // HTML转Markdown的简单转换函数
+  const htmlToMarkdown = (html: string): string => {
+    if (!html) return "";
+    
+    let markdown = html;
+    
+    // 移除所有HTML标签，保留文本内容
+    markdown = markdown.replace(/<[^>]*>/g, '');
+    
+    // 处理换行
+    markdown = markdown.replace(/\n/g, '\n\n');
+    
+    // 处理特殊字符
+    markdown = markdown.replace(/&nbsp;/g, ' ');
+    markdown = markdown.replace(/&lt;/g, '<');
+    markdown = markdown.replace(/&gt;/g, '>');
+    markdown = markdown.replace(/&amp;/g, '&');
+    markdown = markdown.replace(/&quot;/g, '"');
+    
+    return markdown.trim();
+  };
+
+  // Markdown转HTML的简单转换函数
+  const markdownToHtml = (markdown: string): string => {
+    if (!markdown) return "";
+    
+    let html = markdown;
+    
+    // 处理换行
+    html = html.replace(/\n\n/g, '<br><br>');
+    html = html.replace(/\n/g, '<br>');
+    
+    // 处理特殊字符
+    html = html.replace(/&/g, '&amp;');
+    html = html.replace(/</g, '&lt;');
+    html = html.replace(/>/g, '&gt;');
+    html = html.replace(/"/g, '&quot;');
+    
+    return html;
+  };
+
+  // 保存内容到源文档
+  const saveContent = async (content: string) => {
+    if (!currentRndId) return;
+    
+    try {
+      // 使用思源API更新文档内容，使用DOM格式
+      const result = await pluginInstance.kernelApi.updateBlock(currentRndId, content, "dom");
+      
+      if (result && result.code === 0) {
+        pluginInstance.logger.info("内容已保存到源文档");
+      } else {
+        pluginInstance.logger.error("保存失败:", result?.msg);
+      }
+    } catch (error) {
+      pluginInstance.logger.error("保存内容时出错:", error);
+    }
+  };
+
+  // 处理内容编辑
+  const handleContentEdit = (event: Event) => {
+    const target = event.target as HTMLElement;
+    editableContent = target.innerHTML;
+    debouncedSave(editableContent);
+  };
+
+  // 初始化可编辑内容
+const initEditableContent = async () => {
+  if (!currentRndId) return;
+  
+  try {
+    // 获取文档内容
+    const docResult = await pluginInstance.kernelApi.getDoc(currentRndId);
+    if (docResult && docResult.code === 0) {
+      const doc = docResult.data as any;
+      editableContent = doc.content || "";
+    }
+  } catch (error) {
+    pluginInstance.logger.error("获取文档内容失败:", error);
+    editableContent = content; // 回退到原有内容
+  }
+};
+
+  // 当文档ID变化时初始化可编辑内容
+  $: if (currentRndId) {
+    initEditableContent();
+  }
+
+  onDestroy(() => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+  });
+
   // lifecycle
   onMount(async () => {
     // 读取配置
@@ -791,8 +1066,12 @@
       await pr.initIncrementalConfig()
     }
 
-    // 开始漫游
-    await doRandomDoc()
+    // 检查是否已经有内容，如果有则不自动开始漫游
+    // 避免在标签页激活时覆盖已有的文档内容
+    if (!currentRndId && !content) {
+      // 开始漫游
+      await doRandomDoc()
+    }
   })
 </script>
 
@@ -814,7 +1093,6 @@
     <div
       class="protyle-wysiwyg protyle-wysiwyg--attr"
       spellcheck="false"
-      contenteditable="false"
       style="padding: 16px 96px 281.5px;"
       data-doc-type="NodeDocument"
     >
@@ -845,20 +1123,45 @@
             <option value={FilterMode.Root}>根文档</option>
           </select>
           {#if filterMode === FilterMode.Notebook}
-            <select
-              class="action-item b3-select fn__flex-center fn__size150"
-              bind:value={toNotebookId}
-              on:change={onNotebookChange}
-            >
-              <option value="" selected>全部笔记本</option>
-              {#if notebooks && notebooks.length > 0}
-                {#each notebooks as notebook (notebook.id)}
-                  <option value={notebook.id}>{notebook.name}</option>
-                {/each}
-              {:else}
-                <option value="0">{pluginInstance.i18n.loading}...</option>
+            <div class="notebook-selector">
+              <button
+                class="action-item b3-select fn__flex-center fn__size150"
+                on:click={() => showNotebookSelector = !showNotebookSelector}
+              >
+                {#if selectedNotebooks.length === 0}
+                  笔记本：默认全选
+                {:else if selectedNotebooks.length === 1}
+                  {getNotebookName(selectedNotebooks[0])}
+                {:else}
+                  已选{selectedNotebooks.length}个笔记本
+                {/if}
+              </button>
+              {#if showNotebookSelector}
+                <div class="notebook-list">
+                  {#each notebooks as notebook (notebook.id)}
+                    <label class="notebook-item">
+                      <input
+                        type="checkbox"
+                        checked={selectedNotebooks.includes(notebook.id)}
+                        on:change={() => toggleNotebook(notebook.id)}
+                      />
+                      {notebook.name}
+                    </label>
+                  {/each}
+                  <div class="confirm-button-container">
+                    <button
+                      class="b3-button b3-button--outline fn__size150"
+                      on:click={() => {
+                        showNotebookSelector = false;
+                        onNotebookChange();
+                      }}
+                    >
+                      确定
+                    </button>
+                  </div>
+                </div>
               {/if}
-            </select>
+            </div>
           {:else}
             <input
               class="b3-text-field fn__size150"
@@ -881,7 +1184,7 @@
         <button class="action-item b3-button primary-btn btn-small" on:click={reviewMode === ReviewMode.Incremental ? doIncrementalRandomDoc : doRandomDoc}>
           {isLoading ? "漫游中..." : "继续漫游"}
         </button>
-        <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>编辑</button>
+        <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
         <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={resetAndRefresh} title="清空已访问的文档记录">
           重置已访问
         </button>
@@ -918,7 +1221,22 @@
           <div class="protyle-attr" contenteditable="false" />
         </div>
       </div>
-      {@html content}
+      <div 
+        class="editable-content-area"
+        contenteditable="true"
+        spellcheck="false"
+        bind:innerHTML={editableContent}
+        on:input={handleContentEdit}
+        on:blur={() => {
+          isEditing = false;
+          // 立即保存
+          if (saveTimeout) {
+            clearTimeout(saveTimeout);
+            saveContent(editableContent);
+          }
+        }}
+        on:focus={() => isEditing = true}
+      ></div>
     </div>
   </div>
 </div>
@@ -1044,4 +1362,74 @@
     border-color: var(--b3-theme-surface-lighter) !important
     &:hover
       background-color: var(--b3-theme-surface-light) !important
+
+  /* 笔记本选择器样式 */
+  .notebook-selector
+    position: relative
+    display: inline-block
+    
+  .notebook-buttons
+    display: flex
+    gap: 8px
+    
+  .notebook-list
+    position: absolute
+    top: 100%
+    left: 0
+    z-index: 100
+    background: var(--b3-theme-background)
+    border: 1px solid var(--b3-border-color)
+    border-radius: 4px
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1)
+    padding: 8px
+    max-height: 300px
+    overflow-y: auto
+    width: 200px
+    
+  .notebook-item
+    display: block
+    padding: 6px 8px
+    cursor: pointer
+    font-size: 13px
+    border-radius: 4px
+    
+    &:hover
+      background-color: var(--b3-list-hover)
+      
+    input
+      margin-right: 8px
+      
+  .confirm-button-container
+    display: flex
+    justify-content: center
+    margin-top: 8px
+
+  .content-area
+    cursor: pointer
+    transition: background-color 0.2s ease
+    padding: 16px
+    border-radius: 6px
+    border: 1px solid var(--b3-border-color)
+    margin: 16px 0
+    
+    &:hover
+      background-color: var(--b3-list-hover)
+      border-color: var(--b3-theme-primary)
+
+  .editable-content-area
+    min-height: 400px
+    padding: 16px
+    border-radius: 6px
+    border: 1px solid var(--b3-border-color)
+    margin: 16px 0
+    background-color: var(--b3-theme-background)
+    outline: none
+    transition: border-color 0.2s ease
+    
+    &:focus
+      border-color: var(--b3-theme-primary)
+      box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter)
+    
+    &:hover
+      border-color: var(--b3-theme-primary-light)
 </style>

@@ -123,6 +123,66 @@ class KernelApi extends BaseApi {
     const url = "/api/filetree/getDoc"
     return await this.siyuanRequest(url, params)
   }
+
+  /**
+   * 获取最近更新的文档
+   * @returns 最近更新的文档列表
+   */
+  public async getRecentDocs(): Promise<SiyuanData> {
+    return await this.siyuanRequest("/api/storage/getRecentDocs", {})
+  }
+
+  /**
+   * 更新块内容
+   * @param blockId 块ID
+   * @param content 新内容
+   * @param dataType 数据类型，默认为markdown
+   */
+  public async updateBlock(blockId: string, content: string, dataType: string = "markdown"): Promise<SiyuanData> {
+    return await this.siyuanRequest("/api/block/updateBlock", {
+      id: blockId,
+      dataType: dataType,
+      data: content,
+    })
+  }
+
+  /**
+   * 获取文档的Markdown内容
+   * @param docId 文档ID
+   * @returns 文档的Markdown内容
+   */
+  public async getDocMarkdown(docId: string): Promise<string> {
+    try {
+      // 使用SQL查询获取文档的所有块内容
+      const stmt = `
+        SELECT content 
+        FROM blocks 
+        WHERE root_id = '${docId}' 
+        AND type != 'd' 
+        ORDER BY created
+      `
+      const result = await this.sql(stmt)
+      if (result.code !== 0) {
+        throw new Error(result.msg)
+      }
+      
+      const blocks = result.data as any[]
+      if (!blocks || blocks.length === 0) {
+        return ""
+      }
+      
+      // 将所有块的内容合并为Markdown
+      const markdownContent = blocks
+        .map(block => block.content)
+        .filter(content => content && content.trim())
+        .join('\n\n')
+      
+      return markdownContent
+    } catch (error) {
+      this.logger.error("获取文档Markdown内容失败:", error)
+      throw error
+    }
+  }
 }
 
 export default KernelApi

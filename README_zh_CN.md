@@ -8,8 +8,9 @@
 
 ## 项目信息
 
-- **项目地址**：[https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
 - **基于项目**：[思源插件：文档漫游](https://github.com/terwer/siyuan-plugin-random-doc.git)（作者：[terwer](https://github.com/terwer)）
+- **项目地址**：[https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
+- **讨论帖**：[漫游式渐进阅读 | 唯一能用的渐进阅读推荐解决方案](https://ld246.com/article/1746802777105)
 
 ## 核心理念
 

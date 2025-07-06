@@ -8,8 +8,9 @@ The core principle of incremental reading is intelligent recommendation for "rea
 
 ## Project Information
 
-- **Project Repository**: [https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
 - **Based on**: [siyuan-plugin-random-doc](https://github.com/terwer/siyuan-plugin-random-doc.git) (Author: [terwer](https://github.com/terwer))
+- **Project Repository**: [https://github.com/ebAobS/roaming-mode-incremental-reading](https://github.com/ebAobS/roaming-mode-incremental-reading)
+- **Discussion Thread**: [Roaming Mode Incremental Reading](https://ld246.com/article/1746802777105) 
 
 ## Preview
 

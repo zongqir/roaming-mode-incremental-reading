@@ -218,7 +218,7 @@
   // 增加指标值
   async function increaseMetric(metricId: string) {
     const currentValue = docMetrics.get(metricId) || 0
-    const newValue = Math.min(10, currentValue + 0.1)
+    const newValue = Math.min(10, currentValue + 1)
     
     // 更新本地状态
     docMetrics.set(metricId, newValue)
@@ -239,7 +239,7 @@
   // 减少指标值
   async function decreaseMetric(metricId: string) {
     const currentValue = docMetrics.get(metricId) || 0
-    const newValue = Math.max(0, currentValue - 0.1)
+    const newValue = Math.max(0, currentValue - 1)
     
     // 更新本地状态
     docMetrics.set(metricId, newValue)

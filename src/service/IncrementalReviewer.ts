@@ -257,8 +257,8 @@ class IncrementalReviewer {
         
         docPriorityList.push(...batchResults)
         
-        // 3.1.9.2 更新进度提示
-        if (allDocs.length > 100) {
+        // 3.1.9.2 更新进度提示 - 只在处理大量文档时显示进度，且降低显示频率
+        if (allDocs.length > 100 && i % (batchSize * 5) === 0) {
           showMessage(`正在计算文档优先级 ${docPriorityList.length}/${allDocs.length}`, 1000, "info")
         }
       }
@@ -1065,8 +1065,13 @@ class IncrementalReviewer {
 
     let condition = ""
     if (filterMode === FilterMode.Notebook && notebookId) {
-      this.pluginInstance.logger.info(`应用笔记本过滤，笔记本ID: ${notebookId}`)
-      condition = `AND box = '${notebookId}'`
+      // 处理多个笔记本ID的情况
+      const notebookIds = notebookId.split(',')
+      if (notebookIds.length > 0) {
+        const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
+        condition = `AND box IN (${quotedIds})`
+        this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+      }
     } else if (filterMode === FilterMode.Root && rootId) {
       this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
       condition = `AND path LIKE '%${rootId}%'`

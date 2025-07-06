@@ -6,6 +6,8 @@
 
 渐进阅读的核心要点，是智能推荐的稍后阅读，并不是对抗遗忘。制作闪卡后复习的核心才是对抗遗忘。
 
+## 欢迎添加微信：ebAobS，加入微信交流群
+
 ## 项目信息
 
 - **基于项目**：[思源插件：文档漫游](https://github.com/terwer/siyuan-plugin-random-doc.git)（作者：[terwer](https://github.com/terwer)）
@@ -88,7 +90,3 @@
 <div>
 <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png" alt="donate" style="height:300px;" />
 </div>
-
-## 联系方式
-
-作者邮箱：ebAobS@outlook.com

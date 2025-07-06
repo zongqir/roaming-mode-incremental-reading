@@ -6,6 +6,8 @@
 
 The core principle of incremental reading is intelligent recommendation for "read later", not combating forgetting. Combating forgetting is the core of reviewing flashcards.
 
+## wechat：ebAobSS
+
 ## Project Information
 
 - **Based on**: [siyuan-plugin-random-doc](https://github.com/terwer/siyuan-plugin-random-doc.git) (Author: [terwer](https://github.com/terwer))

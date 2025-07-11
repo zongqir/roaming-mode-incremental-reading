@@ -42,6 +42,34 @@
   let priorityColor: string = "#666"
   let isLoading = true
   let errorMessage: string = ""
+  let roamingCount: number = 0
+  let roamingLastTime: string = ""
+  let editingPriority: boolean = false
+  let priorityInputValue: string = ""
+
+  function setPriorityInput(val: number) {
+    priorityInputValue = val.toFixed(1)
+  }
+
+  function increasePriority() {
+    let v = parseFloat(priorityInputValue)
+    if (isNaN(v)) v = totalPriority
+    v = Math.min(10, v + 1)
+    setPriorityInput(v)
+    handlePriorityInput()
+  }
+  function decreasePriority() {
+    let v = parseFloat(priorityInputValue)
+    if (isNaN(v)) v = totalPriority
+    v = Math.max(0, v - 1)
+    setPriorityInput(v)
+    handlePriorityInput()
+  }
+
+  // 初始化优先级输入框
+  $: if (!isLoading && !editingPriority) {
+    setPriorityInput(totalPriority)
+  }
 
   // events
   const dispatch = createEventDispatcher()
@@ -65,6 +93,22 @@
     
     // 使用setTimeout确保在渲染循环中异步执行，避免状态混淆
     setTimeout(() => loadDocMetrics(), 0)
+  }
+
+  // 监听外部 docPriority 变化，实时同步到内部状态
+  $: if (docPriority && Object.keys(docPriority).length > 0 && !isLoading) {
+    // 更新内部 docMetrics 数据
+    let newDocMetrics = new Map()
+    metrics.forEach(metric => {
+      const value = docPriority[metric.id] !== undefined 
+        ? docPriority[metric.id] 
+        : 5.0
+      newDocMetrics.set(metric.id, value)
+    })
+    docMetrics = newDocMetrics
+    
+    // 重新计算优先级并更新输入框
+    calculatePriority()
   }
 
   // 加载文档指标数据
@@ -146,6 +190,33 @@
       
       pluginInstance.logger.info(`文档 ${currentDocId} 的指标数据加载完成`)
       
+      // 获取漫游次数
+      try {
+        roamingCount = await reviewer.getRoamingCount(currentDocId)
+      } catch (error) {
+        pluginInstance.logger.error(`获取文档 ${currentDocId} 的漫游次数失败:`, error)
+        roamingCount = 0
+      }
+      // 获取上次访问时间
+      try {
+        const last = await reviewer.getRoamingLastTime(currentDocId)
+        if (last) {
+          // 格式化为 YYYY-MM-DD HH:mm
+          const d = new Date(last)
+          const y = d.getFullYear()
+          const m = (d.getMonth() + 1).toString().padStart(2, '0')
+          const day = d.getDate().toString().padStart(2, '0')
+          const h = d.getHours().toString().padStart(2, '0')
+          const min = d.getMinutes().toString().padStart(2, '0')
+          roamingLastTime = `${y}-${m}-${day} ${h}:${min}`
+        } else {
+          roamingLastTime = "-"
+        }
+      } catch (error) {
+        pluginInstance.logger.error(`获取文档 ${currentDocId} 的上次访问时间失败:`, error)
+        roamingLastTime = "-"
+      }
+      
       // 计算优先级并设置颜色
       calculatePriority()
     } catch (error) {
@@ -180,6 +251,11 @@
     // 设置优先级颜色 (从绿色到红色的渐变)
     const hue = (120 - totalPriority * 12) // 120为绿色, 0为红色
     priorityColor = `hsl(${hue}, 80%, 45%)`
+    
+    // 同步更新优先级输入框的值
+    if (!editingPriority) {
+      setPriorityInput(totalPriority)
+    }
     
     // 通知父组件优先级已更新
     dispatch("priorityChange", { priority: totalPriority })
@@ -256,13 +332,61 @@
       pluginInstance.logger.error(errorMessage, error)
     }
   }
+
+
+
+  async function handlePriorityInput() {
+    let newValue = parseFloat(priorityInputValue)
+    if (isNaN(newValue)) {
+      setPriorityInput(totalPriority)
+      return
+    }
+    newValue = Math.max(0, Math.min(10, newValue))
+    const oldPriority = totalPriority
+    if (oldPriority === 0) {
+      // 全部设为新优先级/权重和
+      let totalWeight = 0
+      metrics.forEach(m => totalWeight += m.weight)
+      metrics.forEach(metric => {
+        const v = totalWeight > 0 ? newValue * (metric.weight / totalWeight) : 0
+        docMetrics.set(metric.id, v)
+      })
+    } else {
+      const ratio = newValue / oldPriority
+      metrics.forEach(metric => {
+        const oldVal = docMetrics.get(metric.id) || 0
+        let v = oldVal * ratio
+        v = Math.max(0, Math.min(10, v))
+        docMetrics.set(metric.id, v)
+      })
+    }
+    docMetrics = new Map(docMetrics)
+    calculatePriority()
+    // 保存到文档
+    for (const metric of metrics) {
+      try {
+        await reviewer.updateDocMetric(docId, metric.id, docMetrics.get(metric.id) || 0)
+      } catch (e) {}
+    }
+    setPriorityInput(totalPriority)
+  }
 </script>
 
 <div class="metrics-panel">
   <div class="metrics-title">
     <h3>文档指标</h3>
-    <div class="priority-display" style="color: {priorityColor}">
-      优先级：{totalPriority.toFixed(1)}
+    <div class="priority-edit-row">
+      <span class="priority-label">优先级</span>
+      <div class="priority-edit-group">
+        <button class="priority-btn" on:click={decreasePriority}>-</button>
+        <input id="priority-input" type="number" min="0" max="10" step="0.1"
+          bind:value={priorityInputValue}
+          on:blur={handlePriorityInput}
+          on:keydown={(e) => e.key === 'Enter' && handlePriorityInput()}
+          class="priority-input"
+        />
+        <button class="priority-btn" on:click={increasePriority}>+</button>
+      </div>
     </div>
   </div>
   
@@ -288,7 +412,10 @@
           <div class="metric-controls">
             <button on:click={() => decreaseMetric(metric.id)}>-</button>
             <input 
-              type="text" 
+              type="number" 
+              min="0" 
+              max="10" 
+              step="0.1"
               class="metric-value" 
               value={docMetrics.get(metric.id)?.toFixed(1) || "0.0"}
               on:blur={(e) => updateMetricValue(metric.id, e.currentTarget.value)} 
@@ -299,6 +426,18 @@
           </div>
         </div>
       {/each}
+    </div>
+  {/if}
+  
+  <!-- 漫游次数显示 -->
+  {#if !isLoading && !errorMessage}
+    <div class="roaming-count-section">
+      <div class="roaming-count">
+        漫游次数：{roamingCount}
+      </div>
+      <div class="roaming-last">
+        上次访问：{roamingLastTime}
+      </div>
     </div>
   {/if}
 </div>
@@ -322,6 +461,55 @@
     border-bottom: 1px solid var(--b3-border-color);
     padding-bottom: 4px;
   }
+  .priority-edit-row {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .priority-label {
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+    font-weight: 500;
+    margin-right: 4px;
+  }
+  .priority-edit-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .priority-btn {
+    /* 完全复用.metric-controls button的尺寸和样式，仅主色区别 */
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    border: 1px solid var(--b3-theme-primary); /* 主色 */
+    background-color: var(--b3-theme-background);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: var(--b3-theme-primary); /* 主色 */
+    font-weight: bold;
+    transition: background 0.2s;
+  }
+  .priority-btn:hover {
+    background: var(--b3-theme-primary-light);
+  }
+  .priority-input {
+    /* 完全复用.metric-value的尺寸和样式，仅主色区别 */
+    width: 40px;
+    text-align: center;
+    margin: 0 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid var(--b3-theme-primary); /* 主色 */
+    font-weight: bold;
+    font-size: 13px;
+    background-color: var(--b3-theme-surface);
+    color: var(--b3-theme-primary); /* 主色 */
+  }
   
   .metrics-title h3 {
     margin: 0;
@@ -329,9 +517,32 @@
     color: var(--b3-theme-on-surface);
   }
   
+
+  
   .priority-display {
     font-weight: bold;
     font-size: 14px;
+  }
+  
+  .roaming-count-section {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--b3-border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .roaming-count {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: normal;
+  }
+  
+  .roaming-last {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    font-weight: normal;
   }
   
   .metrics-list {
@@ -363,6 +574,7 @@
   .metric-controls {
     display: flex;
     align-items: center;
+    gap: 4px;
   }
   
   .metric-controls button {
@@ -429,5 +641,50 @@
     border-radius: 4px;
     margin: 8px 0;
     background-color: var(--b3-theme-error-lightest);
+  }
+
+  .priority-edit-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .priority-btn {
+    /* 完全复用.metric-controls button的尺寸和样式，仅主色区别 */
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    border: 1px solid var(--b3-theme-primary); /* 主色 */
+    background-color: var(--b3-theme-background);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: var(--b3-theme-primary); /* 主色 */
+    font-weight: bold;
+    transition: background 0.2s;
+  }
+  .priority-btn:hover {
+    background: var(--b3-theme-primary-light);
+  }
+  .priority-input {
+    /* 完全复用.metric-value的尺寸和样式，仅主色区别 */
+    width: 40px;
+    text-align: center;
+    margin: 0 4px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid var(--b3-theme-primary); /* 主色 */
+    font-weight: bold;
+    font-size: 13px;
+    background-color: var(--b3-theme-surface);
+    color: var(--b3-theme-primary); /* 主色 */
+  }
+  .priority-label {
+    font-size: 13px;
+    color: var(--b3-theme-primary);
+    font-weight: bold;
+    margin-top: 2px;
+    margin-left: 2px;
   }
 </style> 

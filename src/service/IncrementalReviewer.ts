@@ -126,7 +126,7 @@ class IncrementalReviewer {
    * 
    * @returns 选中的文档ID
    */
-  public async getRandomDoc(): Promise<string | any> {
+  public async getRandomDoc(): Promise<string | { docId: string, isAbsolutePriority: boolean }> {
     try {
       this.pluginInstance.logger.info("开始获取随机文档...")
       
@@ -137,7 +137,7 @@ class IncrementalReviewer {
       let excludeVisited = ""
       
       // 3.1.2 构建排除已访问文档的条件
-      if (this.storeConfig.excludeTodayVisited) {
+      if (this.storeConfig.excludeVisited) {
         this.pluginInstance.logger.info("启用了排除已访问文档选项")
         excludeVisited = `
           AND (
@@ -171,7 +171,7 @@ class IncrementalReviewer {
       
       // 3.1.4 检查是否存在符合条件的文档
       if (totalDocCount === 0) {
-        const errorMsg = this.storeConfig.excludeTodayVisited 
+        const errorMsg = this.storeConfig.excludeVisited 
           ? "所有文档都已访问过，可以重置访问记录或关闭排除已访问选项" 
           : "没有找到符合条件的文档";
           
@@ -226,8 +226,8 @@ class IncrementalReviewer {
       
       this.pluginInstance.logger.info(`最终获取到 ${allDocs.length}/${totalDocCount} 个文档`)
       
-      // 3.1.7 显示获取文档数量的提示
-      showMessage(`已获取 ${allDocs.length} 个文档用于计算漫游概率`, 3000, "info")
+      // 3.1.7 记录获取文档数量（仅日志，不显示弹窗）
+      this.pluginInstance.logger.info(`已获取 ${allDocs.length} 个文档用于计算漫游概率`)
 
       // 3.1.8 获取所有文档的优先级数据
       this.pluginInstance.logger.info("开始获取所有文档的优先级数据...")
@@ -269,6 +269,20 @@ class IncrementalReviewer {
       const top5Docs = docPriorityList.slice(0, 5).map(doc => `${doc.docId}: ${doc.priority.toFixed(2)}`);
       this.pluginInstance.logger.info(`前5个文档的优先级: ${top5Docs.join(', ')}`)
 
+      // 绝对优先级顺序漫游概率逻辑
+      const prob = this.storeConfig.absolutePriorityProb ?? 0
+      if (prob > 0 && Math.random() < prob) {
+        // 直接选择优先级最高的未访问文档
+        let maxDoc = docPriorityList[0]
+        for (const doc of docPriorityList) {
+          if (doc.priority > maxDoc.priority) maxDoc = doc
+        }
+        this.pluginInstance.logger.info(`绝对优先级顺序漫游命中，直接选择文档: ${maxDoc.docId}`)
+        await this.updateVisitCount(maxDoc.docId)
+        // 不计算轮盘赌概率，直接返回
+        return { docId: maxDoc.docId, isAbsolutePriority: true }
+      }
+
       // 3.1.11 使用轮盘赌算法选择文档
       const selectedDoc = this.rouletteWheelSelection(docPriorityList)
       this.pluginInstance.logger.info(`选中的文档ID: ${selectedDoc}`)
@@ -307,13 +321,13 @@ class IncrementalReviewer {
         const blockResult = await this.pluginInstance.kernelApi.getBlockByID(selectedDoc)
         if (blockResult) {
           const docTitle = blockResult.content || "无标题文档"
-          await this.saveRoamingHistory(selectedDoc, docTitle, this._lastSelectionProbability)
+          // await this.saveRoamingHistory(selectedDoc, docTitle, this._lastSelectionProbability)
         }
       } catch (error) {
         this.pluginInstance.logger.error('获取文档标题失败，不影响漫游过程:', error)
       }
       
-      return selectedDoc
+      return { docId: selectedDoc, isAbsolutePriority: false }
     } catch (error) {
       this.pluginInstance.logger.error("获取随机文档失败", error)
       showMessage("获取随机文档失败: " + error.message, 5000, "error")
@@ -733,35 +747,7 @@ class IncrementalReviewer {
       this.pluginInstance.logger.info(`[${i+1}] 文档ID: ${item.docId.substring(0, 8)}..., 优先级: ${item.priority.toFixed(4)}, 概率: ${ratio.toFixed(4)}%`);
     }
     
-    // 5.1.7 显示总体概率分布
-    this.pluginInstance.logger.info(`文档概率分布统计:`)
-    const highProb = items.filter(item => (item.priority / totalPriority) * 100 > 10).length;
-    const medProb = items.filter(item => {
-      const p = (item.priority / totalPriority) * 100;
-      return p <= 10 && p > 1;
-    }).length;
-    const lowProb = items.filter(item => {
-      const p = (item.priority / totalPriority) * 100;
-      return p <= 1 && p > 0.1;
-    }).length;
-    const veryLowProb = items.filter(item => (item.priority / totalPriority) * 100 <= 0.1).length;
-    
-    this.pluginInstance.logger.info(`- 高概率(>10%): ${highProb}个文档`);
-    this.pluginInstance.logger.info(`- 中等概率(1%-10%): ${medProb}个文档`);
-    this.pluginInstance.logger.info(`- 低概率(0.1%-1%): ${lowProb}个文档`);
-    this.pluginInstance.logger.info(`- 极低概率(<=0.1%): ${veryLowProb}个文档`);
-    
-    // 5.1.8 向用户界面显示概率分布统计
-    const distributionInfo = `
-文档概率分布统计:
-- 高概率(>10%): ${highProb}个文档
-- 中等概率(1%-10%): ${medProb}个文档
-- 低概率(0.1%-1%): ${lowProb}个文档
-- 极低概率(<=0.1%): ${veryLowProb}个文档
-共${items.length}个文档
-    `.trim();
-    
-    showMessage(distributionInfo, 5000, "info");
+    // 5.1.7 概率分布统计功能已删除
     
     // 5.1.9 执行轮盘赌选择
     let accumulatedPriority = 0
@@ -832,15 +818,11 @@ class IncrementalReviewer {
     this.pluginInstance.logger.info(`- 原始计算结果: ${probability.toFixed(6)}%`)
     this.pluginInstance.logger.info(`- 四位小数格式: ${probability.toFixed(4)}%`)
     
-    // 5.2.5 向用户界面显示计算过程提示信息
-    const probabilityInfo = `
-概率计算过程:
-文档优先级: ${docPriority.toFixed(2)}
-总体优先级: ${totalPriority.toFixed(2)}
-计算结果: (${docPriority.toFixed(2)} / ${totalPriority.toFixed(2)}) × 100 = ${probability.toFixed(4)}%
-    `.trim();
-    
-    showMessage(probabilityInfo, 5000, "info");
+    // 5.2.5 记录概率计算过程（仅日志，不显示弹窗）
+    this.pluginInstance.logger.info(`概率计算过程:`)
+    this.pluginInstance.logger.info(`文档优先级: ${docPriority.toFixed(2)}`)
+    this.pluginInstance.logger.info(`总体优先级: ${totalPriority.toFixed(2)}`)
+    this.pluginInstance.logger.info(`计算结果: (${docPriority.toFixed(2)} / ${totalPriority.toFixed(2)}) × 100 = ${probability.toFixed(4)}%`)
     
     // 5.2.6 返回原始计算结果，不进行任何约束或舍入
     return probability
@@ -890,7 +872,7 @@ class IncrementalReviewer {
    * 
    * @param filterCondition 可选的过滤条件
    */
-  public async resetTodayVisits(filterCondition: string = ""): Promise<void> {
+  public async resetVisited(filterCondition: string = ""): Promise<void> {
     try {
       // 6.2.1 查找所有已访问的文档
       const sql = `
@@ -952,7 +934,7 @@ class IncrementalReviewer {
    * 
    * @returns 已访问文档数量
    */
-  public async getTodayVisitedCount(): Promise<number> {
+  public async getVisitedCount(): Promise<number> {
     try {
       const filterCondition = this.buildFilterCondition()
       
@@ -982,65 +964,88 @@ class IncrementalReviewer {
   }
 
   /**
-   * 6.4 保存漫游历史
-   * 
-   * @param docId 文档ID
-   * @param docTitle 文档标题
-   * @param probability 选中概率
+   * 6.x 获取今日已访问文档详细列表（含id和标题）
+   * @returns [{id, content}[]]
    */
-  public async saveRoamingHistory(docId: string, docTitle: string, probability: number): Promise<void> {
+  public async getVisitedDocs(): Promise<Array<{id: string, content: string}>> {
     try {
-      // 6.4.1 获取现有历史记录
-      const history = await this.getRoamingHistory()
-      
-      // 6.4.2 添加新记录到最前面（最新的记录在前）
-      history.unshift({
-        id: docId,
-        title: docTitle,
-        probability: probability.toFixed(4),
-        timestamp: new Date().toISOString()
-      })
-      
-      // 6.4.3 限制历史记录数量，保留最近100条
-      const limitedHistory = history.slice(0, 100)
-      
-      // 6.4.4 保存到存储
-      await this.pluginInstance.saveData('roaming_history', limitedHistory)
+      const filterCondition = this.buildFilterCondition()
+      const sql = `
+        SELECT id, content FROM blocks 
+        WHERE type = 'd' 
+        ${filterCondition}
+        AND id IN (
+          SELECT block_id FROM attributes 
+          WHERE name = 'custom-visit-count' 
+          AND value <> ''
+        )
+        ORDER BY updated DESC
+      `
+      const result = await this.pluginInstance.kernelApi.sql(sql)
+      if (result.code !== 0) {
+        this.pluginInstance.logger.error(`获取已访问文档列表失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        return []
+      }
+      return result.data as Array<{id: string, content: string}>
     } catch (error) {
-      this.pluginInstance.logger.error("保存漫游历史失败:", error)
-    }
-  }
-  
-  /**
-   * 6.5 获取漫游历史
-   * 
-   * @returns 漫游历史记录数组
-   */
-  public async getRoamingHistory(): Promise<Array<{
-    id: string, 
-    title: string, 
-    probability: string,
-    timestamp: string
-  }>> {
-    try {
-      const history = await this.pluginInstance.safeLoad('roaming_history')
-      return Array.isArray(history) ? history : []
-    } catch (error) {
-      this.pluginInstance.logger.error("获取漫游历史失败:", error)
+      this.pluginInstance.logger.error("获取已访问文档列表失败", error)
       return []
     }
   }
+
+  /**
+   * 6.7 获取文档的漫游次数
+   * 获取文档被浏览的总次数（永久记录，不受重置影响）
+   * 
+   * @param docId 文档ID
+   * @returns 漫游次数
+   */
+  public async getRoamingCount(docId: string): Promise<number> {
+    try {
+      const attrs = await this.pluginInstance.kernelApi.getBlockAttrs(docId)
+      const data = attrs.data || attrs
+      const count = parseInt(data["custom-roaming-count"] || "0", 10)
+      return count
+    } catch (error) {
+      this.pluginInstance.logger.error(`获取文档 ${docId} 的漫游次数失败`, error)
+      return 0
+    }
+  }
+
+  /**
+   * 6.8 增加文档的漫游次数
+   * 当文档被浏览时调用，增加漫游次数
+   * 
+   * @param docId 文档ID
+   */
+  public async incrementRoamingCount(docId: string): Promise<void> {
+    try {
+      const currentCount = await this.getRoamingCount(docId)
+      const newCount = currentCount + 1
+      const now = new Date().toISOString()
+      await this.pluginInstance.kernelApi.setBlockAttrs(docId, {
+        "custom-roaming-count": newCount.toString(),
+        "custom-roaming-last": now
+      })
+      this.pluginInstance.logger.info(`文档 ${docId} 的漫游次数已更新为 ${newCount}，上次访问时间：${now}`)
+    } catch (error) {
+      this.pluginInstance.logger.error(`更新文档 ${docId} 的漫游次数失败`, error)
+    }
+  }
   
   /**
-   * 6.6 清除漫游历史
+   * 6.9 获取文档的上次漫游时间
+   * @param docId 文档ID
+   * @returns ISO字符串或 undefined
    */
-  public async clearRoamingHistory(): Promise<void> {
+  public async getRoamingLastTime(docId: string): Promise<string | undefined> {
     try {
-      await this.pluginInstance.saveData('roaming_history', [])
-      this.pluginInstance.logger.info("漫游历史已清除")
+      const attrs = await this.pluginInstance.kernelApi.getBlockAttrs(docId)
+      const data = attrs.data || attrs
+      return data["custom-roaming-last"]
     } catch (error) {
-      this.pluginInstance.logger.error("清除漫游历史失败:", error)
-      throw error
+      this.pluginInstance.logger.error(`获取文档 ${docId} 的上次漫游时间失败`, error)
+      return undefined
     }
   }
   

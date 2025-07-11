@@ -20,8 +20,7 @@
  */
 
 export enum ReviewMode {
-  Incremental = "incremental",
-  Once = "once",
+  Incremental = "incremental"
 }
 
 export enum FilterMode {
@@ -37,11 +36,6 @@ class IncrementalReadingConfig {
    * 笔记本ID
    */
   public notebookId: string
-
-  /**
-   * 是否显示加载中
-   */
-  public showLoading: boolean
 
   /**
    * 是否启用自定义 SQL
@@ -81,12 +75,24 @@ class IncrementalReadingConfig {
   /**
    * 是否排除今日已访问的文档
    */
-  excludeTodayVisited = true
+  excludeVisited = true
+
+  /**
+   * 是否启用自动重置已访问记录
+   */
+  autoResetEnabled = false
+
+  /**
+   * 重置周期（小时）
+   */
+  resetIntervalHours = 24
 
   constructor() {
     this.filterMode = this.filterMode || FilterMode.Notebook
     this.rootId = this.rootId || ""
-    this.excludeTodayVisited = this.excludeTodayVisited !== false
+    this.excludeVisited = this.excludeVisited !== false
+    this.autoResetEnabled = this.autoResetEnabled ?? false
+    this.resetIntervalHours = this.resetIntervalHours ?? 24
   }
 }
 

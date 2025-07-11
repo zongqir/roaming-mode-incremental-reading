@@ -26,13 +26,16 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte"
   import { storeName } from "../Constants"
-  import RandomDocConfig, { FilterMode, ReviewMode } from "../models/RandomDocConfig"
+  import RandomDocConfig, { FilterMode } from "../models/RandomDocConfig"
   import { Dialog, openTab, showMessage } from "siyuan"
   import RandomDocPlugin from "../index"
   import Loading from "./Loading.svelte"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import MetricsPanel from "./MetricsPanel.svelte"
+  import PriorityBarChart from "./PriorityBarChart.svelte"
   import { isContentEmpty } from "../utils/utils"
+  import { icons } from "../utils/svg"
+  import { showSettingMenu } from "../topbar"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -50,7 +53,6 @@
   let currentRndId
   let unReviewedCount = 0
   let content = ""
-  let reviewMode = ReviewMode.Incremental
   let toNotebookId = "" // 当前选中的笔记本ID
 
   let sqlList: any[] = []
@@ -62,160 +64,228 @@
   let docPriority: { [key: string]: number } = {}
   
   // 漫游历史相关
-  let showHistoryDialog = false
-  let roamingHistory = []
-  let isLoadingHistory = false
-  let historyDialog = null
-
   let protyleContainer: HTMLDivElement | null = null;
   let protyleInstance: any = null;
   let editableContent = "";
   let isEditing = false;
   let saveTimeout: any = null;
 
-  // methods
-  export const doRandomDoc = async () => {
-    if (isLoading) {
-      pluginInstance.logger.warn("上次随机还未结束，忽略")
+  // 新增：已访问文档列表弹窗相关
+  let showVisitedDialog = false
+  let visitedDocs: Array<{id: string, content: string, lastTime?: string}> = []
+  let visitedLoading = false
+
+  // 新增：优先级排序弹窗相关
+  let showPriorityDialog = false
+  let priorityLoading = false
+  let priorityList: any[] = []
+
+  // 优先级调整相关
+  let priorityInputValues: { [key: string]: string } = {}
+
+  // 拖动排序相关
+  let draggedItem: any = null
+  let draggedIndex = -1
+  let dragOverIndex = -1
+
+  // 设置优先级输入框的值
+  function setPriorityInputValue(docId: string, value: number) {
+    priorityInputValues[docId] = value.toFixed(1)
+  }
+
+  // 处理拖动开始
+  function handleDragStart(e: DragEvent, item: any, index: number) {
+    draggedItem = item
+    draggedIndex = index
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/html', '') // 必须设置数据才能开始拖动
+  }
+
+  // 处理拖动悬停
+  function handleDragOver(e: DragEvent, index: number) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggedIndex !== index) {
+      dragOverIndex = index
+    }
+  }
+
+  // 处理拖动进入
+  function handleDragEnter(e: DragEvent, index: number) {
+    e.preventDefault()
+    if (draggedIndex !== index) {
+      dragOverIndex = index
+    }
+  }
+
+  // 处理拖动离开
+  function handleDragLeave(e: DragEvent) {
+    e.preventDefault()
+    // 只有在真正离开元素时才清除悬停状态
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      dragOverIndex = -1
+    }
+  }
+
+  // 处理拖动放下
+  async function handleDrop(e: DragEvent, dropIndex: number) {
+    e.preventDefault()
+    if (draggedIndex === -1 || draggedIndex === dropIndex) {
+      draggedItem = null
+      draggedIndex = -1
+      dragOverIndex = -1
       return
     }
 
     try {
-      isLoading = true
-      pluginInstance.logger.info("开始漫游...")
+      // 计算新的优先级（上下两个条目的平均值）
+      let newPriority = 5.0 // 默认值
       
-      // 根据模式选择不同的漫游方法
-      if (storeConfig.reviewMode === ReviewMode.Incremental) {
-        await doIncrementalRandomDoc()
-        return
-      }
-      
-      // 一遍过模式处理
-      let currentRndRes
-      // 自定义SQL模式
-      if (storeConfig?.customSqlEnabled) {
-        currentRndRes = await handleCustomSqlMode()
-        currentRndId = currentRndRes
-        if (!currentRndId) {
-          clearDoc()
-          throw new Error(new Date().toISOString() + "：" + pluginInstance.i18n.docFetchError)
-        }
-        
-        pluginInstance.logger.info(`已漫游到 ${currentRndId} ...`)
-        
-        try {
-          // 获取文档块信息
-          const rootBlock = await pluginInstance.kernelApi.getBlockByID(currentRndId)
-          if (!rootBlock) {
-            throw new Error("获取文档块失败")
-          }
-          
-        // 获取文档内容
-          const docResult = await pluginInstance.kernelApi.getDoc(currentRndId)
-          if (!docResult || docResult.code !== 0) {
-            throw new Error("获取文档内容失败")
-          }
-          
-          const doc = docResult.data as any
-          title = rootBlock.content
-          content = doc.content ?? ""
-          
-          // 初始化可编辑内容
-          await initEditableContent()
-          
-        // 获取总文档数
-        const total = await pluginInstance.kernelApi.getRootBlocksCount()
-        
-        // 获取已访问文档数量（通过SQL方式）
-        let remainingCount = total
-        try {
-          // 确保pr已初始化
-          if (!pr) {
-            pr = new IncrementalReviewer(storeConfig, pluginInstance)
-            await pr.initIncrementalConfig()
-          }
-          const visitedCount = await pr.getTodayVisitedCount()
-          remainingCount = total - visitedCount
-        } catch (error) {
-          pluginInstance.logger.warn("获取已访问文档数量失败，使用总数作为剩余数", error)
-          // 失败时保持剩余数等于总数
-        }
-        
-        tips = `展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${remainingCount}。`
-        } catch (error) {
-          clearDoc()
-          tips = "获取文档内容失败：" + error.message
-          throw error
-        }
+      if (dropIndex === 0) {
+        // 拖到第一位，优先级设为当前第一位的优先级 + 1
+        newPriority = priorityList[0].priority + 1
+      } else if (dropIndex === priorityList.length) {
+        // 拖到最后一位，优先级设为当前最后一位的优先级 - 1
+        newPriority = priorityList[priorityList.length - 1].priority - 1
       } else {
-        // 常规模式
-        currentRndRes = await getOnceModeDoc()
-        currentRndId = currentRndRes?.id
-        unReviewedCount = currentRndRes?.count ?? "0"
-        if (!currentRndId) {
-          clearDoc()
-          throw new Error(new Date().toISOString() + "：" + pluginInstance.i18n.docFetchError)
-        }
-        
-        pluginInstance.logger.info(`已漫游到 ${currentRndId} ...`)
-        
-        try {
-          // 获取文档块信息
-          const rootBlock = await pluginInstance.kernelApi.getBlockByID(currentRndId)
-          if (!rootBlock) {
-            throw new Error("获取文档块失败")
-          }
-          
-        // 获取文档内容
-        const docResult = await pluginInstance.kernelApi.getDoc(currentRndId)
-        if (!docResult || docResult.code !== 0) {
-          throw new Error("获取文档内容失败")
-        }
-        
-        const doc = docResult.data as any
-        title = rootBlock.content
-        content = doc.content ?? ""
-        
-        // 初始化可编辑内容
-        await initEditableContent()
-          
-        // 处理空文档
-        if (isContentEmpty(content)) {
-          clearDoc()
-          tips = "白纸素笺无墨迹，且待片刻换新篇。正文为空，2秒后继续下一个。"
-          setTimeout(async () => {
-            await doRandomDoc()
-          }, 2000)
-          return
-        }
-          
-        
-        // 获取总文档数
-        const total = await getTotalDocCount()
-        // 使用unReviewedCount表示剩余文档数
-        tips = `展卷乃无言的情意，它踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${unReviewedCount}。`
-        } catch (error) {
-          clearDoc()
-          tips = "获取文档内容失败：" + error.message
-          throw error
+        // 拖到中间位置，优先级设为上下两个条目的平均值
+        const upperPriority = priorityList[dropIndex - 1].priority
+        const lowerPriority = priorityList[dropIndex].priority
+        newPriority = (upperPriority + lowerPriority) / 2
+      }
+
+      // 确保优先级在合理范围内
+      newPriority = Math.max(0, Math.min(10, newPriority))
+
+      // 更新文档的指标参数
+      await updateDocPriorityByValue(draggedItem.id, newPriority)
+
+      // 更新列表中的优先级
+      draggedItem.priority = newPriority
+      setPriorityInputValue(draggedItem.id, newPriority)
+
+      // 重新排序列表
+      priorityList.sort((a, b) => b.priority - a.priority)
+      priorityList = [...priorityList] // 触发Svelte更新
+
+      // 如果当前文档也在列表中，刷新点图
+      if (draggedItem.id === currentRndId) {
+        await refreshPriorityBarPoints()
+        if (typeof pr.getDocPriorityData === 'function') {
+          const docPriorityData = await pr.getDocPriorityData(currentRndId)
+          docPriority = docPriorityData.metrics
         }
       }
-    } catch (e) {
-      clearDoc()
-      tips = "漫游式渐进阅读失败！=>" + e.toString()
+
+    } catch (err) {
+      pluginInstance.logger.error("拖动排序失败", err)
+      showMessage("拖动排序失败: " + err.message, 3000, "error")
     } finally {
-      isLoading = false
+      draggedItem = null
+      draggedIndex = -1
+      dragOverIndex = -1
     }
   }
-  
+
+  // 更新文档优先级（按值设置）
+  async function updateDocPriorityByValue(docId: string, newPriority: number) {
+    if (!pr) return
+    
+    try {
+      // 获取所有指标
+      const metrics = pr.getMetrics()
+      // 按权重分配每个指标的值，使归一化优先级等于 newPriority
+      await Promise.all(metrics.map(metric => {
+        return pr.updateDocMetric(docId, metric.id, newPriority)
+      }))
+    } catch (err) {
+      pluginInstance.logger.error("更新文档优先级失败", err)
+      throw err
+    }
+  }
+
+  // 增加优先级
+  async function increasePriorityInList(docId: string) {
+    const doc = priorityList.find(d => d.id === docId)
+    if (!doc) return
+    
+    let v = parseFloat(priorityInputValues[docId] || doc.priority.toString())
+    if (isNaN(v)) v = doc.priority
+    v = Math.min(10, v + 1)
+    setPriorityInputValue(docId, v)
+    await handlePriorityInputInList(docId, v)
+  }
+
+  // 减少优先级
+  async function decreasePriorityInList(docId: string) {
+    const doc = priorityList.find(d => d.id === docId)
+    if (!doc) return
+    
+    let v = parseFloat(priorityInputValues[docId] || doc.priority.toString())
+    if (isNaN(v)) v = doc.priority
+    v = Math.max(0, v - 1)
+    setPriorityInputValue(docId, v)
+    await handlePriorityInputInList(docId, v)
+  }
+
+  // 处理优先级输入
+  async function handlePriorityInputInList(docId: string, newValue?: number) {
+    if (!pr) return
+    
+    let targetValue = newValue
+    if (targetValue === undefined) {
+      targetValue = parseFloat(priorityInputValues[docId])
+      if (isNaN(targetValue)) return
+    }
+    
+    targetValue = Math.max(0, Math.min(10, targetValue))
+    
+    try {
+      await updateDocPriorityByValue(docId, targetValue)
+      
+      // 更新列表中的优先级
+      const docIndex = priorityList.findIndex(d => d.id === docId)
+      if (docIndex !== -1) {
+        priorityList[docIndex].priority = targetValue
+        // 重新排序
+        priorityList.sort((a, b) => b.priority - a.priority)
+        priorityList = [...priorityList] // 触发Svelte更新
+      }
+      
+      // 如果当前文档也在列表中，刷新点图
+      if (docId === currentRndId) {
+        await refreshPriorityBarPoints()
+        if (typeof pr.getDocPriorityData === 'function') {
+          const docPriorityData = await pr.getDocPriorityData(currentRndId)
+          docPriority = docPriorityData.metrics
+        }
+      }
+      
+      setPriorityInputValue(docId, targetValue)
+    } catch (err) {
+      pluginInstance.logger.error("设置优先级失败", err)
+      showMessage("设置优先级失败: " + err.message, 3000, "error")
+    }
+  }
+
+  // 优先级分布点图相关
+  let priorityBarPoints: Array<{ id: string; priority: number }> = []
+  let priorityBarMin = 0
+  let priorityBarMax = 10
+
+  // methods
+  // 删除doRandomDoc方法及所有相关调用，所有漫游逻辑只保留doIncrementalRandomDoc
   /**
    * 渐进模式下的文档漫游
    */
   const doIncrementalRandomDoc = async () => {
+    // 每次漫游前强制刷新配置，确保概率配置为最新
+    storeConfig = await pluginInstance.safeLoad(storeName)
     isLoading = true
     title = "漫游中..."
     content = ""
     tips = "加载中..."
+    let result = undefined // 修复linter错误，提升result作用域
     
     // 清空当前文档ID和指标数据，避免显示上一篇文章的数据
     currentRndId = undefined
@@ -240,8 +310,14 @@
 
       // 获取随机文档
       try {
-        const newDocId = await pr.getRandomDoc()
-        
+        result = await pr.getRandomDoc()
+        let newDocId, isAbsolutePriority = false
+        if (typeof result === 'object' && result !== null && 'docId' in result) {
+          newDocId = result.docId
+          isAbsolutePriority = result.isAbsolutePriority
+        } else {
+          newDocId = result
+        }
         if (!newDocId) {
           content = "没有找到符合条件的文档，这可能是因为随机算法的误差或优先级配置问题。"
           tips = "调整过滤条件或优先级配置，然后再次尝试。"
@@ -354,10 +430,23 @@
       }
       
       // 获取已访问文档数量
-      const visitedCount = await pr.getTodayVisitedCount()
+      const visitedCount = await pr.getVisitedCount()
       const remainingCount = total - visitedCount
       
-      tips = `展卷乃无言的情意，以${selectionProbabilityText}的机遇，踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${remainingCount}。`
+      // 优先级顺序漫游提示
+      let extraTip = ''
+      if (typeof result === 'object' && result.isAbsolutePriority) {
+        extraTip = '（本次为优先级顺序漫游，直接选择优先级最高的文档）'
+      }
+      tips = `展卷乃无言的情意，以${selectionProbabilityText}的机遇，踏碎星辰来看你，三秋霜雪作马蹄。${total}篇文档已剩${remainingCount}。${extraTip}`
+      
+      // 增加文档的漫游次数
+      try {
+        await pr.incrementRoamingCount(currentRndId)
+      } catch (error) {
+        pluginInstance.logger.error("增加漫游次数失败:", error)
+        // 不影响主要功能，只记录错误
+      }
       
     } catch (e) {
       pluginInstance.logger.error("渐进复习出错:", e)
@@ -428,13 +517,13 @@
       // 处理空文档
       if (isContentEmpty(content)) {
         content = "该文档内容为空"
-        tips = "白纸素笺无墨迹，且待片刻换新篇。"
+        tips = "白纸素笺无墨迹，且待片刻焕新篇。"
         isLoading = false
         return
       }
 
       // 如果是渐进模式，获取文档的优先级数据
-      if (storeConfig.reviewMode === ReviewMode.Incremental) {
+      if (storeConfig.reviewMode === "incremental") {
         try {
           // 检查渐进复习器是否已初始化
           if (!pr) {
@@ -483,6 +572,16 @@
       
       tips = `展卷乃无言的情意，踏碎星辰来看你，三秋霜雪作马蹄。正在漫游指定文档。`
       
+      // 增加文档的漫游次数
+      try {
+        if (pr) {
+          await pr.incrementRoamingCount(currentRndId)
+        }
+      } catch (error) {
+        pluginInstance.logger.error("增加漫游次数失败:", error)
+        // 不影响主要功能，只记录错误
+      }
+      
     } catch (error) {
       pluginInstance.logger.error("漫游指定文档失败:", error)
       content = "漫游指定文档失败: " + error.message
@@ -498,7 +597,7 @@
   async function resetAllVisitCounts() {
     try {
       // 使用IncrementalReviewer的重置方法
-      await pr.resetTodayVisits()
+      await pr.resetVisited()
     } catch (error) {
       pluginInstance.logger.error("重置访问记录失败", error)
       showMessage(`重置失败: ${error.message}`, 5000, "error")
@@ -527,7 +626,7 @@
     const total = countResult.data[0]?.total || 0
     if (total === 0) {
       // 使用IncrementalReviewer的重置方法
-      await pr.resetTodayVisits(filterCondition)
+      await pr.resetVisited(filterCondition)
       // 重置后再次尝试
       return await getOnceModeDoc()
     }
@@ -589,6 +688,251 @@
     return await pr.getTotalDocCount(storeConfig)
   }
 
+  // 新增：已访问文档列表弹窗相关
+  async function openVisitedDocs() {
+    showVisitedDialog = true
+    visitedLoading = true
+    if (!pr) {
+      pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      await pr.initIncrementalConfig()
+    }
+    // 获取已访问文档及其上次漫游时间
+    const docs = await pr.getVisitedDocs()
+    // 并发获取每个文档的上次漫游时间
+    visitedDocs = await Promise.all(docs.map(async doc => {
+      const lastTime = await pr.getRoamingLastTime(doc.id)
+      return { ...doc, lastTime }
+    }))
+    // 按lastTime从新到旧排序
+    visitedDocs.sort((a, b) => {
+      if (!a.lastTime && !b.lastTime) return 0
+      if (!a.lastTime) return 1
+      if (!b.lastTime) return -1
+      return b.lastTime.localeCompare(a.lastTime)
+    })
+    visitedLoading = false
+  }
+
+  function closeVisitedDialog() {
+    showVisitedDialog = false
+  }
+
+  async function resetVisitedAndRefresh() {
+    await resetAllVisitCounts()
+    // 刷新已访问文档列表
+    if (showVisitedDialog) {
+      await openVisitedDocs()
+    }
+  }
+
+  // 新增：用于弹窗中点击文档标题打开文档
+  function openDoc(docId: string) {
+    openTab({
+      app: pluginInstance.app,
+      doc: { id: docId }
+    })
+  }
+
+  // 新增：格式化文档ID为日期（如需更复杂格式可后续完善）
+  function formatDocIdToDate(docId: string): string {
+    // 这里简单返回 docId，可根据实际需求格式化
+    return docId
+  }
+
+  // 新增：格式化ISO时间为年月日时分
+  function formatRoamingTime(isoTime?: string): string {
+    if (!isoTime) return ''
+    const date = new Date(isoTime)
+    if (isNaN(date.getTime())) return ''
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${date.getFullYear()}年${pad(date.getMonth()+1)}月${pad(date.getDate())}日${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
+  // 打开优先级排序弹窗
+  async function openPriorityDialog() {
+    showPriorityDialog = true
+    priorityLoading = true
+    priorityList = []
+    priorityInputValues = {} // 清空输入框值
+    try {
+      // 初始化审阅器
+      if (!pr) {
+        pr = new IncrementalReviewer(storeConfig, pluginInstance)
+        await pr.initIncrementalConfig()
+      }
+      // 获取所有文档ID
+      const total = await pr.getTotalDocCount(storeConfig)
+      if (total === 0) {
+        priorityList = []
+        priorityLoading = false
+        return
+      }
+      // 复用pr内部分页SQL逻辑，手动获取所有文档ID
+      const filterCondition = pr.buildFilterCondition(storeConfig)
+      const pageSize = 50
+      let allDocs: Array<{id: string}> = []
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const sql = `SELECT id FROM blocks WHERE type = 'd' ${filterCondition} LIMIT ${pageSize} OFFSET ${offset}`
+        const res = await pluginInstance.kernelApi.sql(sql)
+        if (res.code !== 0) break
+        allDocs = allDocs.concat(res.data as any[])
+        if (!Array.isArray(res.data) || res.data.length === 0) break
+      }
+      // 获取已访问文档ID集合
+      const visitedDocs = await pr.getVisitedDocs()
+      const visitedSet = new Set(visitedDocs.map(d => d.id))
+      // 并发获取优先级和标题
+      const batchSize = 20
+      let tempList: Array<{id: string, title: string, priority: number, visited: boolean}> = []
+      for (let i = 0; i < allDocs.length; i += batchSize) {
+        const batch = allDocs.slice(i, i + batchSize)
+        const batchResults = await Promise.all(batch.map(async doc => {
+          try {
+            const docData = await pr.getDocPriorityData(doc.id)
+            const priorityResult = await pr["calculatePriority"](docData)
+            // 获取标题
+            const block = await pluginInstance.kernelApi.getBlockByID(doc.id)
+            return {
+              id: doc.id,
+              title: block?.content || '(无标题)',
+              priority: priorityResult.priority,
+              visited: visitedSet.has(doc.id)
+            }
+          } catch {
+            return {
+              id: doc.id,
+              title: '(无标题)',
+              priority: 5.0,
+              visited: visitedSet.has(doc.id)
+            }
+          }
+        }))
+        tempList.push(...batchResults)
+      }
+      // 按优先级降序
+      tempList.sort((a, b) => b.priority - a.priority)
+      priorityList = tempList
+      
+      // 初始化所有文档的优先级输入框值
+      priorityList.forEach(doc => {
+        setPriorityInputValue(doc.id, doc.priority)
+      })
+    } finally {
+      priorityLoading = false
+    }
+  }
+  function closePriorityDialog() {
+    showPriorityDialog = false
+  }
+  // 热力色条：优先级归一化，红-高，蓝-低
+  function getHeatColor(priority: number, min: number, max: number) {
+    if (max === min) return 'rgb(128,128,255)';
+    const t = (priority - min) / (max - min)
+    // t=1红，t=0蓝
+    const r = Math.round(255 * t)
+    const g = 64
+    const b = Math.round(255 * (1 - t))
+    return `rgb(${r},${g},${b})`
+  }
+  // 优先级排序弹窗渲染辅助变量
+  $: priorityMin = (priorityList as any[]).length > 0 ? Math.min(...(priorityList as any[]).map(d => d.priority)) : 0;
+  $: priorityMax = (priorityList as any[]).length > 0 ? Math.max(...(priorityList as any[]).map(d => d.priority)) : 1;
+
+  // 刷新优先级分布点图数据
+  async function refreshPriorityBarPoints() {
+    if (!pr) return
+    // 获取所有文档ID
+    const total = await pr.getTotalDocCount(storeConfig)
+    if (total === 0) {
+      priorityBarPoints = []
+      return
+    }
+    const filterCondition = pr.buildFilterCondition(storeConfig)
+    const pageSize = 50
+    let allDocs: Array<{ id: string }> = []
+    for (let offset = 0; offset < total; offset += pageSize) {
+      const sql = `SELECT id FROM blocks WHERE type = 'd' ${filterCondition} LIMIT ${pageSize} OFFSET ${offset}`
+      const res = await pluginInstance.kernelApi.sql(sql)
+      if (res.code !== 0) break
+      allDocs = allDocs.concat(res.data as any[])
+      if (!Array.isArray(res.data) || res.data.length === 0) break
+    }
+    // 并发获取优先级
+    const batchSize = 20
+    let tempList: Array<{ id: string; priority: number }> = []
+    for (let i = 0; i < allDocs.length; i += batchSize) {
+      const batch = allDocs.slice(i, i + batchSize)
+      const batchResults = await Promise.all(batch.map(async doc => {
+        try {
+          const docData = await pr.getDocPriorityData(doc.id)
+          const priorityResult = await pr["calculatePriority"](docData)
+          return {
+            id: doc.id,
+            priority: priorityResult.priority,
+          }
+        } catch {
+          return {
+            id: doc.id,
+            priority: 5.0,
+          }
+        }
+      }))
+      tempList.push(...batchResults)
+    }
+    priorityBarPoints = tempList
+    if (tempList.length > 0) {
+      priorityBarMin = Math.min(...tempList.map(d => d.priority))
+      priorityBarMax = Math.max(...tempList.map(d => d.priority))
+      if (priorityBarMin === priorityBarMax) {
+        priorityBarMin = 0
+        priorityBarMax = 10
+      }
+    } else {
+      priorityBarMin = 0
+      priorityBarMax = 10
+    }
+  }
+
+  // 拖动优先级点时的回调
+  let draggingPriority = null
+  function handlePriorityBarDragging(e) {
+    draggingPriority = e.detail.priority
+  }
+  async function handlePriorityBarChange(e) {
+    const newPriority = e.detail.priority
+    if (!currentRndId || !pr) return
+    try {
+      // 获取所有指标
+      const metrics = pr.getMetrics()
+      // 计算总权重
+      const totalWeight = metrics.reduce((sum, m) => sum + m.weight, 0)
+      // 按权重分配每个指标的值，使归一化优先级等于 newPriority
+      await Promise.all(metrics.map(metric => {
+        // 归一化优先级 = sum(指标值 * 权重) / 总权重
+        // 这里简单分配：所有指标都设为 newPriority
+        // 更精细可按权重分配：metricValue = newPriority
+        return pr.updateDocMetric(currentRndId, metric.id, newPriority)
+      }))
+      // 立即刷新当前文档优先级数据，同步到 MetricsPanel
+      if (typeof pr.getDocPriorityData === 'function') {
+        const docPriorityData = await pr.getDocPriorityData(currentRndId)
+        docPriority = docPriorityData.metrics
+      }
+      // 刷新点图数据
+      await refreshPriorityBarPoints()
+    } catch (err) {
+      pluginInstance.logger.error("设置优先级失败", err)
+      showMessage("设置优先级失败: " + err.message, 3000, "error")
+    }
+    draggingPriority = null
+  }
+
+  // 监听 MetricsPanel 的优先级变化事件
+  async function handleMetricsPanelPriorityChange(e) {
+    // MetricsPanel 优先级变化后，刷新点图数据
+    await refreshPriorityBarPoints()
+  }
+
   // events
   const clearDoc = () => {
     currentRndId = undefined
@@ -605,7 +949,7 @@
     clearDoc()
     
     // 如果当前是渐进模式，需要重新初始化reviewer以更新笔记本过滤条件
-    if (reviewMode === ReviewMode.Incremental && filterMode === FilterMode.Notebook) {
+    if (storeConfig.reviewMode === "incremental") {
       pluginInstance.logger.info("笔记本变更后重新初始化渐进模式...")
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
@@ -626,19 +970,6 @@
     pluginInstance.logger.info("storeConfig saved currentSql =>", storeConfig)
   }
 
-  const onReviewModeChange = async function () {
-    // 模式切换
-    storeConfig.reviewMode = reviewMode
-    await pluginInstance.saveData(storeName, storeConfig)
-    // 重置文档
-    clearDoc()
-    // 如果切换到渐进模式，需要重新初始化pr
-    if (reviewMode === ReviewMode.Incremental) {
-      pr = null
-    }
-    pluginInstance.logger.info("storeConfig saved reviewMode =>", storeConfig)
-  }
-
   const onFilterModeChange = async function () {
     // 模式切换
     storeConfig.filterMode = filterMode
@@ -648,7 +979,7 @@
     clearDoc()
     
     // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
-    if (reviewMode === ReviewMode.Incremental) {
+    if (storeConfig.reviewMode === "incremental") {
       pluginInstance.logger.info("筛选模式变更后重新初始化渐进模式...")
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
@@ -669,7 +1000,7 @@
     clearDoc()
     
     // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
-    if (reviewMode === ReviewMode.Incremental && filterMode === FilterMode.Root) {
+    if (storeConfig.reviewMode === "incremental") {
       pluginInstance.logger.info("根文档ID变更后重新初始化渐进模式...")
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
@@ -718,12 +1049,7 @@
     // 不再自动触发保存，等待用户点击确定
   }
 
-  // 全选/取消全选
-  // 当没有选择任何笔记本时，默认全选
-  $: if (selectedNotebooks.length === 0 && notebooks.length > 0) {
-    selectedNotebooks = notebooks.map(notebook => notebook.id)
-    // 注意：这里不调用onNotebookChange，因为初始化时不需要触发刷新
-  }
+  // 移除默认全选的响应式逻辑，改为在初始化时处理
 
   // 根据笔记本ID获取笔记本名称
   function getNotebookName(notebookId) {
@@ -737,10 +1063,10 @@
       await resetAllVisitCounts()
       
       // 重置后立即重新漫游
-      if (reviewMode === ReviewMode.Incremental) {
+      if (storeConfig.reviewMode === "incremental") {
         await doIncrementalRandomDoc()
       } else {
-        await doRandomDoc()
+        // 如果当前不是渐进模式，则不进行任何操作，因为doIncrementalRandomDoc是唯一漫游方法
       }
     } catch (error) {
       pluginInstance.logger.error("重置访问记录失败", error)
@@ -755,168 +1081,6 @@
     pluginInstance.logger.info(`优先级已更新: ${numericPriority}`)
   }
   
-  /**
-   * 显示漫游历史对话框
-   */
-  const showRoamingHistory = async () => {
-    if (!pr) {
-      showMessage("请先开始漫游", 3000, "info")
-      return
-    }
-    
-    isLoadingHistory = true
-    
-    try {
-      // 获取历史记录
-      roamingHistory = await pr.getRoamingHistory()
-      
-      // 销毁旧对话框
-      if (historyDialog) {
-        historyDialog.destroy()
-        historyDialog = null
-      }
-      
-      // 创建对话框
-      historyDialog = new Dialog({
-        title: "漫游历史记录",
-        content: '<div id="roaming-history-container" class="history-container"></div>',
-        width: "600px",
-        height: "400px",
-      })
-      
-      // 确保对话框容器样式正确
-      const container = historyDialog.element.querySelector(".b3-dialog__container")
-      if (container) {
-        container.style.maxWidth = "80vw"
-      }
-      
-      // 渲染历史记录
-      renderHistoryTable()
-    } catch (error) {
-      pluginInstance.logger.error("获取漫游历史失败:", error)
-      showMessage("无法获取漫游历史: " + error.message, 3000, "error")
-    } finally {
-      isLoadingHistory = false
-    }
-  }
-  
-  /**
-   * 渲染历史记录表格
-   */
-  const renderHistoryTable = () => {
-    if (!historyDialog) return
-    
-    const container = historyDialog.element.querySelector("#roaming-history-container")
-    if (!container) return
-    
-    if (roamingHistory.length === 0) {
-      container.innerHTML = '<div class="empty-history">暂无漫游历史记录</div>'
-      return
-    }
-    
-    const tableHTML = `
-      <div class="history-table-container">
-        <table class="history-table">
-          <thead>
-            <tr>
-              <th style="width: 180px">时间</th>
-              <th>文档标题</th>
-              <th style="width: 80px">概率</th>
-              <th style="width: 70px">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${roamingHistory.map((item, index) => {
-              const date = new Date(item.timestamp)
-              const formattedDate = `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
-              
-              return `
-                <tr data-id="${item.id}" class="history-item">
-                  <td>${formattedDate}</td>
-                  <td class="history-title" title="${item.title}">${item.title}</td>
-                  <td>${item.probability}%</td>
-                  <td>
-                    <button class="b3-button b3-button--outline btn-open-doc" data-id="${item.id}">
-                      打开
-                    </button>
-                  </td>
-                </tr>
-              `
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-      <div class="history-footer">
-        <button class="b3-button b3-button--outline btn-clear-history">
-          清空历史
-        </button>
-      </div>
-    `
-    
-    container.innerHTML = tableHTML
-    
-    // 添加事件监听
-    const openButtons = container.querySelectorAll('.btn-open-doc')
-    openButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const docId = (e.currentTarget as HTMLElement).dataset.id
-        if (docId) {
-          // 在新标签页打开文档
-          openTab({
-            app: pluginInstance.app,
-            doc: { id: docId }
-          })
-        }
-      })
-    })
-    
-    // 添加点击行打开文档
-    const historyItems = container.querySelectorAll('.history-item')
-    historyItems.forEach(item => {
-      item.addEventListener('click', (e) => {
-        // 如果点击的是按钮，不处理
-        if ((e.target as HTMLElement).closest('.btn-open-doc')) {
-          return
-        }
-        
-        const docId = (item as HTMLElement).dataset.id
-        if (docId) {
-          // 在新标签页打开文档
-          openTab({
-            app: pluginInstance.app,
-            doc: { id: docId }
-          })
-        }
-      })
-    })
-    
-    // 添加清空历史按钮事件
-    const clearButton = container.querySelector('.btn-clear-history')
-    if (clearButton) {
-      clearButton.addEventListener('click', async () => {
-        try {
-          if (confirm("确定要清空所有漫游历史记录吗？")) {
-            await pr.clearRoamingHistory()
-            roamingHistory = []
-            renderHistoryTable()
-            showMessage("漫游历史已清空", 3000, "info")
-          }
-        } catch (error) {
-          showMessage("清空历史失败: " + error.message, 3000, "error")
-        }
-      })
-    }
-  }
-  
-  // 关闭历史对话框
-  const closeHistoryDialog = () => {
-    showHistoryDialog = false
-    if (historyDialog) {
-      historyDialog.destroy()
-      historyDialog = null
-    }
-  }
-
   // 防抖保存函数
   const debouncedSave = (content: string) => {
     if (saveTimeout) {
@@ -1015,6 +1179,11 @@ const initEditableContent = async () => {
     initEditableContent();
   }
 
+  // 在漫游、切换文档、初始化等时刷新点图
+  $: if (pr && currentRndId) {
+    refreshPriorityBarPoints()
+  }
+
   onDestroy(() => {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
@@ -1033,6 +1202,20 @@ const initEditableContent = async () => {
     const hiddenNotebook: Set<string> = new Set(["思源笔记用户指南", "SiYuan User Guide"])
     // 没有必要把所有笔记本都列出来
     notebooks = notebooks.filter((notebook) => !notebook.closed && !hiddenNotebook.has(notebook.name))
+    
+    // 从配置中恢复选中的笔记本
+    if (storeConfig?.notebookId) {
+      // 如果配置中有保存的笔记本ID，则恢复选择
+      selectedNotebooks = storeConfig.notebookId.split(',').filter(id => id.trim() !== '')
+    }
+    // 如果没有保存的配置或配置为空，则默认全选（仅在首次使用时）
+    if (selectedNotebooks.length === 0 && notebooks.length > 0) {
+      selectedNotebooks = notebooks.map(notebook => notebook.id)
+      // 保存默认全选状态到配置
+      storeConfig.notebookId = selectedNotebooks.join(',')
+      await pluginInstance.saveData(storeName, storeConfig)
+    }
+    
     // 选中，若是没保存，获取第一个
     toNotebookId = storeConfig?.notebookId ?? notebooks[0].id
 
@@ -1042,12 +1225,6 @@ const initEditableContent = async () => {
     }
     filterMode = storeConfig.filterMode
     rootId = storeConfig?.rootId ?? ""
-
-    // 复习模式
-    if (!storeConfig?.reviewMode) {
-      storeConfig.reviewMode = ReviewMode.Incremental
-    }
-    reviewMode = storeConfig.reviewMode
 
     // 处理自定义 sql
     if (storeConfig?.customSqlEnabled) {
@@ -1061,22 +1238,34 @@ const initEditableContent = async () => {
     }
 
     // 初始化渐进模式
-    if (reviewMode === ReviewMode.Incremental) {
+    if (storeConfig.reviewMode === "incremental") {
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
+      // 检查是否需要启动时自动重置
+      if (storeConfig?.autoResetOnStartup) {
+        try {
+          pluginInstance.logger.info("检测到启动时自动重置设置，开始重置已访问文档记录...")
+          const filterCondition = pr.buildFilterCondition(storeConfig)
+          await pr.resetVisited(filterCondition)
+          showMessage("启动时自动重置已访问文档记录完成", 3000)
+        } catch (error) {
+          pluginInstance.logger.error("启动时自动重置失败:", error)
+          showMessage("启动时自动重置失败: " + error.message, 5000, "error")
+        }
+      }
     }
 
     // 检查是否已经有内容，如果有则不自动开始漫游
     // 避免在标签页激活时覆盖已有的文档内容
     if (!currentRndId && !content) {
       // 开始漫游
-      await doRandomDoc()
+      await doIncrementalRandomDoc()
     }
   })
 </script>
 
 <div class="fn__flex-1 protyle" data-loading="finished">
-  <Loading show={isLoading && storeConfig.showLoading} />
+  <Loading show={isLoading} />
   <div class="protyle-content protyle-content--transition" data-fullwidth="true">
     <div class="protyle-title protyle-wysiwyg--attr" style="margin: 16px 96px 0px;">
       <div
@@ -1097,6 +1286,63 @@ const initEditableContent = async () => {
       data-doc-type="NodeDocument"
     >
       <div class="action-btn-group">
+        <span class="filter-label">筛选:</span>
+        <select
+          bind:value={filterMode}
+          class="action-item b3-select fn__flex-center fn__size100"
+          on:change={onFilterModeChange}
+        >
+          <option value={FilterMode.Notebook}>笔记本</option>
+          <option value={FilterMode.Root}>根文档</option>
+        </select>
+        {#if filterMode === FilterMode.Notebook}
+          <div class="notebook-selector">
+            <button
+              class="action-item b3-select fn__flex-center fn__size150"
+              on:click={() => showNotebookSelector = !showNotebookSelector}
+            >
+              {#if selectedNotebooks.length === 0}
+                笔记本：请选择
+              {:else if selectedNotebooks.length === 1}
+                {getNotebookName(selectedNotebooks[0])}
+              {:else}
+                已选{selectedNotebooks.length}个笔记本
+              {/if}
+            </button>
+            {#if showNotebookSelector}
+              <div class="notebook-list">
+                {#each notebooks as notebook (notebook.id)}
+                  <label class="notebook-item">
+                    <input
+                      type="checkbox"
+                      checked={selectedNotebooks.includes(notebook.id)}
+                      on:change={() => toggleNotebook(notebook.id)}
+                    />
+                    {notebook.name}
+                  </label>
+                {/each}
+                <div class="confirm-button-container">
+                  <button
+                    class="b3-button b3-button--outline fn__size150"
+                    on:click={() => {
+                      showNotebookSelector = false;
+                      onNotebookChange();
+                    }}
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {:else}
+          <input
+            class="b3-text-field fn__size150"
+            bind:value={rootId}
+            on:change={onRootIdChange}
+            placeholder="输入根文档ID"
+          />
+        {/if}
         {#if storeConfig?.customSqlEnabled}
           <select
             class="action-item b3-select fn__flex-center fn__size180 notebook-select"
@@ -1113,101 +1359,144 @@ const initEditableContent = async () => {
           </select>
           <span class="custom-sql">当前使用自定义 SQL 漫游</span>
         {:else}
-          <span class="filter-label">筛选:</span>
-          <select
-            bind:value={filterMode}
-            class="action-item b3-select fn__flex-center fn__size100"
-            on:change={onFilterModeChange}
+          <button class="action-item b3-button primary-btn btn-small" on:click={doIncrementalRandomDoc}>
+            {isLoading ? "漫游中..." : "继续漫游"}
+          </button>
+          <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
+          <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
+            已漫游文档
+          </button>
+          <button class="action-item b3-button b3-button--outline btn-small" on:click={openPriorityDialog} title="优先级排序列表">
+            优先级排序表
+          </button>
+          <button
+            class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+            on:click={() => showSettingMenu(pluginInstance)}
+            title={pluginInstance.i18n.setting}
           >
-            <option value={FilterMode.Notebook}>笔记本</option>
-            <option value={FilterMode.Root}>根文档</option>
-          </select>
-          {#if filterMode === FilterMode.Notebook}
-            <div class="notebook-selector">
-              <button
-                class="action-item b3-select fn__flex-center fn__size150"
-                on:click={() => showNotebookSelector = !showNotebookSelector}
-              >
-                {#if selectedNotebooks.length === 0}
-                  笔记本：默认全选
-                {:else if selectedNotebooks.length === 1}
-                  {getNotebookName(selectedNotebooks[0])}
-                {:else}
-                  已选{selectedNotebooks.length}个笔记本
-                {/if}
-              </button>
-              {#if showNotebookSelector}
-                <div class="notebook-list">
-                  {#each notebooks as notebook (notebook.id)}
-                    <label class="notebook-item">
-                      <input
-                        type="checkbox"
-                        checked={selectedNotebooks.includes(notebook.id)}
-                        on:change={() => toggleNotebook(notebook.id)}
-                      />
-                      {notebook.name}
-                    </label>
-                  {/each}
-                  <div class="confirm-button-container">
-                    <button
-                      class="b3-button b3-button--outline fn__size150"
-                      on:click={() => {
-                        showNotebookSelector = false;
-                        onNotebookChange();
-                      }}
-                    >
-                      确定
-                    </button>
-                  </div>
-                </div>
-              {/if}
-            </div>
-          {:else}
-            <input
-              class="b3-text-field fn__size150"
-              bind:value={rootId}
-              on:change={onRootIdChange}
-              placeholder="输入根文档ID"
-            />
-          {/if}
-          <span class="filter-label">模式:</span>
-          <select
-            bind:value={reviewMode}
-            class="action-item b3-select fn__flex-center fn__size100"
-            on:change={onReviewModeChange}
-          >
-            <option value={ReviewMode.Incremental}>渐进</option>
-            <option value={ReviewMode.Once}>一遍过</option>
-          </select>
+            {@html icons.iconSetting}
+          </button>
         {/if}
-
-        <button class="action-item b3-button primary-btn btn-small" on:click={reviewMode === ReviewMode.Incremental ? doIncrementalRandomDoc : doRandomDoc}>
-          {isLoading ? "漫游中..." : "继续漫游"}
-        </button>
-        <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
-        <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={resetAndRefresh} title="清空已访问的文档记录">
-          重置已访问
-        </button>
-        <button class="action-item b3-button b3-button--outline btn-small light-btn history-button" on:click={showRoamingHistory} title="查看漫游历史记录">
-          漫游历史
-        </button>
-        <button
-          class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
-          on:click={openHelpDoc}
-          title={pluginInstance.i18n.help}
-        >
-          ?
-        </button>
       </div>
 
-      {#if reviewMode === ReviewMode.Incremental && currentRndId}
+      <!-- 已访问文档弹窗 -->
+      {#if showVisitedDialog}
+        <div class="visited-dialog-mask" on:click={closeVisitedDialog}></div>
+        <div class="visited-dialog">
+          <div class="visited-dialog-header">
+            <span>已漫游文档列表</span>
+            <button class="close-btn" on:click={closeVisitedDialog}>×</button>
+          </div>
+          <!-- 移动重置按钮到列表上方 -->
+          <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={resetVisitedAndRefresh} title="清空已漫游的文档记录">
+            重置已漫游
+          </button>
+          <div class="visited-list">
+            {#if visitedLoading}
+              <div>加载中...</div>
+            {:else if visitedDocs.length === 0}
+              <div>暂无已漫游文档</div>
+            {:else}
+              <ul>
+                {#each visitedDocs as doc}
+                  <li>
+                    <span class="visited-title" title={doc.id} on:click={() => openDoc(doc.id)}>{doc.content || '(无标题)'}</span>
+                    <small style="color:#888">{formatRoamingTime(doc.lastTime)}</small>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      {#if showPriorityDialog}
+        <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
+        <div class="visited-dialog">
+          <div class="visited-dialog-header">
+            <span>优先级排序列表</span>
+            <button class="close-btn" on:click={closePriorityDialog}>×</button>
+          </div>
+          <div class="visited-list">
+            {#if priorityLoading}
+              <div>加载中...</div>
+            {:else if priorityList.length === 0}
+              <div>暂无文档</div>
+            {:else}
+              <ul class="priority-sortable-list">
+                {#each priorityList as doc, index}
+                  {@const inputValue = priorityInputValues[doc.id] || doc.priority.toFixed(1)}
+                  {@const isDragging = draggedItem?.id === doc.id}
+                  {@const isDragOver = dragOverIndex === index}
+                  <li 
+                    class="priority-sortable-item"
+                    class:dragging={isDragging}
+                    class:drag-over={isDragOver}
+                    draggable="true"
+                    on:dragstart={(e) => handleDragStart(e, doc, index)}
+                    on:dragover={(e) => handleDragOver(e, index)}
+                    on:dragenter={(e) => handleDragEnter(e, index)}
+                    on:dragleave={handleDragLeave}
+                    on:drop={(e) => handleDrop(e, index)}
+                    style="align-items:center;display:flex;gap:8px;padding:8px 0;cursor:grab;border:1px solid transparent;border-radius:4px;transition:all 0.2s;"
+                  >
+                    <!-- 拖动指示器 -->
+                    <span class="drag-handle" style="cursor:grab;color:#999;font-size:16px;margin-right:4px;">⋮⋮</span>
+                    
+                    <span style="display:inline-block;width:8px;height:24px;border-radius:4px;background:{getHeatColor(doc.priority, priorityMin, priorityMax)}"></span>
+                    <span class="visited-title" title={doc.id} on:click={() => openDoc(doc.id)} style="flex:1;">{doc.title}</span>
+                    
+                    <!-- 优先级调整控件 -->
+                    <div class="priority-edit-group" style="display:flex;align-items:center;gap:4px;margin-left:8px;">
+                      <button 
+                        class="priority-btn" 
+                        on:click={() => decreasePriorityInList(doc.id)}
+                        style="width:24px;height:24px;border-radius:3px;border:1px solid var(--b3-theme-primary);background-color:var(--b3-theme-background);cursor:pointer;font-size:14px;line-height:1;padding:0;color:var(--b3-theme-primary);font-weight:bold;"
+                      >-</button>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        max="10" 
+                        step="0.1"
+                        value={inputValue}
+                        on:blur={(e) => handlePriorityInputInList(doc.id, parseFloat(e.currentTarget.value))}
+                        on:keydown={(e) => e.key === 'Enter' && handlePriorityInputInList(doc.id, parseFloat(e.currentTarget.value))}
+                        style="width:40px;text-align:center;margin:0 4px;padding:2px 4px;border-radius:3px;border:1px solid var(--b3-theme-primary);font-weight:bold;font-size:13px;background-color:var(--b3-theme-surface);color:var(--b3-theme-primary);"
+                      />
+                      <button 
+                        class="priority-btn" 
+                        on:click={() => increasePriorityInList(doc.id)}
+                        style="width:24px;height:24px;border-radius:3px;border:1px solid var(--b3-theme-primary);background-color:var(--b3-theme-background);cursor:pointer;font-size:14px;line-height:1;padding:0;color:var(--b3-theme-primary);font-weight:bold;"
+                      >+</button>
+                    </div>
+                    
+                    <span title={doc.visited ? '已访问' : '未访问'} style="font-size:18px;margin-left:8px;">{doc.visited ? '✔️' : '⭕'}</span>
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      {#if currentRndId}
         <MetricsPanel
           pluginInstance={pluginInstance}
           docId={currentRndId}
           reviewer={pr}
           metrics={docMetrics}
           {docPriority}
-          on:priorityChange={handlePriorityChange}
+          on:priorityChange={handleMetricsPanelPriorityChange}
+        />
+        <!-- 优先级分布点图 -->
+        <PriorityBarChart
+          points={priorityBarPoints}
+          currentId={currentRndId}
+          minPriority={priorityBarMin}
+          maxPriority={priorityBarMax}
+          height={48}
+          on:dragging={handlePriorityBarDragging}
+          on:change={handlePriorityBarChange}
         />
       {/if}
 
@@ -1262,7 +1551,7 @@ const initEditableContent = async () => {
 
   .filter-label
     font-size 13px
-    margin-left 5px
+    margin-left 2px
     margin-right 2px
     
   .btn-small
@@ -1276,17 +1565,17 @@ const initEditableContent = async () => {
     padding: 4px 0
 
   .b3-select
-    max-width 120px
+    max-width 90px
     height: 26px
     
   .fn__size100
-    width: 100px !important
+    width: 80px !important
     
   .fn__size150
-    width: 150px !important
+    width: 120px !important
     
   .fn__size180
-    width: 180px !important
+    width: 140px !important
     
   .reset-button
     color: var(--b3-theme-on-background)
@@ -1294,62 +1583,6 @@ const initEditableContent = async () => {
     &:hover
       background-color: var(--b3-theme-error-light) !important
       
-  .history-button
-    color: var(--b3-theme-on-background)
-    background-color: var(--b3-theme-primary-lighter) !important
-    &:hover
-      background-color: var(--b3-theme-primary-light) !important
-      
-  /* 历史记录样式 */
-  .history-container
-    height: 100%
-    padding: 8px 0
-    overflow: auto
-    
-  .history-table-container
-    height: calc(100% - 40px)
-    overflow: auto
-    
-  .history-table
-    width: 100%
-    border-collapse: collapse
-    
-    th
-      background-color: var(--b3-theme-surface)
-      padding: 8px
-      text-align: left
-      position: sticky
-      top: 0
-      z-index: 1
-      
-    td
-      padding: 8px
-      border-bottom: 1px solid var(--b3-border-color)
-      
-    .history-item
-      cursor: pointer
-      
-      &:hover
-        background-color: var(--b3-list-hover)
-        
-    .history-title
-      max-width: 300px
-      overflow: hidden
-      text-overflow: ellipsis
-      white-space: nowrap
-      
-  .history-footer
-    padding: 8px
-    text-align: right
-    border-top: 1px solid var(--b3-border-color)
-    margin-top: 8px
-    
-  .empty-history
-    text-align: center
-    padding: 40px
-    color: var(--b3-theme-on-surface-light)
-    font-style: italic
-
   .primary-btn
     background-color: var(--b3-theme-primary) !important
     color: white !important
@@ -1432,4 +1665,101 @@ const initEditableContent = async () => {
     
     &:hover
       border-color: var(--b3-theme-primary-light)
+
+  .visited-dialog-mask
+    position fixed
+    top 0
+    left 0
+    width 100vw
+    height 100vh
+    background rgba(0,0,0,0.2)
+    z-index 1000
+
+  .visited-dialog
+    position fixed
+    top 50%
+    left 50%
+    transform translate(-50%, -50%)
+    background var(--b3-theme-background)
+    border 1px solid var(--b3-border-color)
+    border-radius 8px
+    box-shadow 0 4px 24px rgba(0,0,0,0.15)
+    z-index 1001
+    min-width 350px
+    max-width 90vw
+    max-height 70vh
+    overflow auto
+    padding 20px
+
+  .visited-dialog-header
+    display flex
+    justify-content space-between
+    align-items center
+    font-size 16px
+    font-weight bold
+    margin-bottom 10px
+
+  .close-btn
+    background none
+    border none
+    font-size 20px
+    cursor pointer
+
+  .visited-list
+    margin-top 10px
+    ul
+      list-style none
+      padding 0
+      margin 0
+      li
+        padding 4px 0
+        border-bottom 1px solid var(--b3-border-color)
+        font-size 14px
+        display flex
+        justify-content space-between
+        align-items center
+        &:last-child
+          border-bottom none
+
+  .visited-title
+    color var(--b3-theme-primary)
+    cursor pointer
+    text-decoration underline
+    &:hover
+      color var(--b3-theme-primary-light)
+
+  /* 优先级排序列表中的调整控件样式 */
+  .priority-edit-group
+    .priority-btn
+      transition: background 0.2s
+      &:hover
+        background: var(--b3-theme-primary-light) !important
+  .priority-sortable-list
+    list-style: none
+    padding: 0
+    margin: 0
+    li
+      padding: 8px 0
+      border-bottom: 1px solid var(--b3-border-color)
+      display: flex
+      align-items: center
+      gap: 8px
+      cursor: grab
+      border: 1px solid transparent
+      border-radius: 4px
+      transition: all 0.2s
+      &:last-child
+        border-bottom: none
+      &.dragging
+        opacity: 0.5
+        border-color: var(--b3-theme-primary)
+        box-shadow: 0 0 10px rgba(0,0,0,0.1)
+      &.drag-over
+        border-color: var(--b3-theme-primary)
+        background-color: var(--b3-theme-surface-light)
+      .drag-handle
+        cursor: grab
+        color: #999
+        font-size: 16px
+        margin-right: 4px
 </style>

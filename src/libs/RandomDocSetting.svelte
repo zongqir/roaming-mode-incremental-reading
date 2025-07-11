@@ -1,7 +1,7 @@
 <script lang="ts">
   import RandomDocPlugin from "../index"
   import { onMount } from "svelte"
-  import RandomDocConfig, { ReviewMode } from "../models/RandomDocConfig"
+  import RandomDocConfig from "../models/RandomDocConfig"
   import { storeName } from "../Constants"
   import { showMessage } from "siyuan"
   import IncrementalReviewer from "../service/IncrementalReviewer"
@@ -12,11 +12,12 @@
   export let dialog
 
   let storeConfig: RandomDocConfig
-  let showLoading = false
   let customSqlEnabled = false
   let sqlContent = JSON.stringify([])
-  let reviewMode = ReviewMode.Incremental
-  let excludeTodayVisited = true
+  let reviewMode: any = "incremental"
+  let excludeVisited = true
+  let autoResetOnStartup = false
+  let absolutePriorityProb = 0;
   
   // 渐进模式配置相关
   let reviewer: IncrementalReviewer
@@ -29,17 +30,21 @@
   let processTotal = 0
   let processCurrent = 0
 
+  let activeTab = 0;
+  const tabList = ["基本配置", "文档指标配置"];
+
   const onSaveSetting = async () => {
     try {
-      storeConfig.showLoading = showLoading
       storeConfig.customSqlEnabled = customSqlEnabled
       storeConfig.sql = sqlContent
       storeConfig.reviewMode = reviewMode
-      storeConfig.excludeTodayVisited = excludeTodayVisited
+      storeConfig.excludeVisited = excludeVisited
+      storeConfig.autoResetOnStartup = autoResetOnStartup
+      storeConfig.absolutePriorityProb = Math.max(0, Math.min(1, Number(absolutePriorityProb)))
       await pluginInstance.saveData(storeName, storeConfig)
       
       // 如果是渐进模式，保存渐进配置
-      if (reviewMode === ReviewMode.Incremental && reviewer) {
+      if (reviewMode === "incremental" && reviewer) {
         await reviewer.saveIncrementalConfig()
         
         // 开始处理文档，显示进度条
@@ -162,14 +167,6 @@
     dialog.destroy()
   }
   
-  // 复习模式变更时的处理
-  async function onReviewModeChange() {
-    if (reviewMode === ReviewMode.Incremental && !reviewer) {
-      // 初始化渐进模式配置
-      await initIncrementalConfig()
-    }
-  }
-  
   // 初始化渐进模式配置
   async function initIncrementalConfig() {
     reviewer = new IncrementalReviewer(storeConfig, pluginInstance)
@@ -179,10 +176,11 @@
 
   onMount(async () => {
     storeConfig = await pluginInstance.loadData(storeName)
-    showLoading = storeConfig?.showLoading ?? false
     customSqlEnabled = storeConfig?.customSqlEnabled ?? false
-    reviewMode = storeConfig?.reviewMode ?? ReviewMode.Incremental
-    excludeTodayVisited = storeConfig?.excludeTodayVisited !== false
+    reviewMode = storeConfig?.reviewMode ?? "incremental"
+    excludeVisited = storeConfig?.excludeVisited !== false
+    autoResetOnStartup = storeConfig?.autoResetOnStartup ?? false
+    absolutePriorityProb = typeof storeConfig?.absolutePriorityProb === 'number' ? storeConfig.absolutePriorityProb : 0;
     sqlContent =
       storeConfig?.sql ??
       JSON.stringify([
@@ -217,52 +215,92 @@
       ])
       
     // 如果当前是渐进模式，初始化渐进配置
-    if (reviewMode === ReviewMode.Incremental) {
+    if (reviewMode === "incremental") {
       await initIncrementalConfig()
     }
   })
 </script>
 
 <div class="random-doc-setting">
+  <div class="config__tab-header">
+    {#each tabList as tab, idx}
+      <div class="tab-item {activeTab === idx ? 'active' : ''}" on:click={() => activeTab = idx}>{tab}</div>
+    {/each}
+  </div>
   <div class="config__tab-container">
-    <div class="fn__block form-item">
-      <div class="form-item-row">
-        <span class="form-item-label">复习模式</span>
-        <select bind:value={reviewMode} class="b3-select" on:change={onReviewModeChange}>
-          <option value={ReviewMode.Incremental}>渐进模式</option>
-          <option value={ReviewMode.Once}>一遍过模式</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="fn__block form-item">
-      <div class="form-item-row">
-        <span class="form-item-label">漫游文档时是否显示加载图标</span>
-        <input class="b3-switch" type="checkbox" bind:checked={showLoading} />
-      </div>
-    </div>
-    
-    {#if reviewMode === ReviewMode.Incremental}
-      <div class="fn__block form-item">
-        <div class="form-item-row">
-          <div>
-            <span class="form-item-label">排除今日已漫游的文档</span>
-            <div class="b3-label__text form-item-tip">勾选后，今日已访问过的文档将不会再次出现</div>
+    {#if activeTab === 0}
+      <!-- 基本配置页内容 -->
+      <div class="fn__block form-item incremental-config-section">
+        <div class="config-section">
+          <div class="form-row">
+            <div class="form-group">
+              <div class="label-input-row">
+                <h4 class="setting-title">绝对优先级顺序漫游概率</h4>
+                <input
+                  class="b3-text-field right-align-input"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  bind:value={absolutePriorityProb}
+                  on:input={() => {
+                    if (String(absolutePriorityProb) === '' || isNaN(Number(absolutePriorityProb))) absolutePriorityProb = 0;
+                    else absolutePriorityProb = Math.max(0, Math.min(1, Number(absolutePriorityProb)));
+                  }}
+                />
+              </div>
+              <p class="help-text">设置为0则禁用，设置为0.2表示20%的概率直接漫游优先级最高的未访问文档。范围0~1。</p>
+            </div>
           </div>
-          <input class="b3-switch" type="checkbox" bind:checked={excludeTodayVisited} />
+          <div class="form-row">
+            <div class="form-group">
+              <h4 class="setting-title">自动重置访问记录</h4>
+              <label>
+                <input
+                  type="checkbox"
+                  bind:checked={autoResetOnStartup}
+                />
+                开启后，每次启动自动清空已访问文档记录
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <h4 class="setting-title">是否启用自定义SQL</h4>
+              <label>
+                <input
+                  type="checkbox"
+                  bind:checked={customSqlEnabled}
+                />
+                启用后可自定义SQL筛选文档
+              </label>
+            </div>
+          </div>
+          {#if customSqlEnabled}
+            <div class="form-row">
+              <div class="form-group">
+                <label>自定义SQL内容</label>
+                <textarea
+                  class="b3-text-field fn__block sql-editor"
+                  id="regCode"
+                  bind:value={sqlContent}
+                  rows="4"
+                  placeholder={pluginInstance.i18n.sqlContentTip}
+                />
+                <p class="help-text">{pluginInstance.i18n.sqlContentTip}</p>
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
-      
+    {/if}
+    {#if activeTab === 1}
+      <!-- 文档指标配置页内容 -->
       <div class="fn__block form-item incremental-config-section">
-        <h3>渐进模式指标配置</h3>
-        <div class="b3-label__text form-item-tip">自定义文档优先级的评估指标，系统将基于这些指标为文档分配选中概率</div>
-        <span class="fn__hr" />
-        
         {#if metrics && metrics.length > 0}
           <div class="config-section">
             <h4>已有指标</h4>
             <p class="help-text">权重总和将自动调整为100%</p>
-            
             <div class="table-container">
               <table class="metrics-table">
                 <thead>
@@ -297,10 +335,8 @@
               </table>
             </div>
           </div>
-          
           <div class="config-section compact-section">
             <h4>添加新指标</h4>
-            
             <div class="form-row">
               <div class="form-group small-group">
                 <label for="newMetricId">ID</label>
@@ -311,7 +347,6 @@
                   placeholder="ID"
                 />
               </div>
-              
               <div class="form-group small-group">
                 <label for="newMetricName">名称</label>
                 <input 
@@ -321,7 +356,6 @@
                   placeholder="名称"
                 />
               </div>
-              
               <div class="form-group tiny-group">
                 <label for="newMetricWeight">权重</label>
                 <input 
@@ -332,7 +366,6 @@
                   max="100"
                 />
               </div>
-              
               <div class="form-group">
                 <label for="newMetricDescription">描述 (可选)</label>
                 <input 
@@ -342,56 +375,27 @@
                   placeholder="简短描述"
                 />
               </div>
-              
               <div class="form-group button-group">
                 <button class="add-button" on:click={addMetric}>添加</button>
               </div>
             </div>
           </div>
         {/if}
-      </div>
-      
-      <!-- 进度条显示 -->
-      {#if isProcessing}
-        <div class="fn__block form-item progress-section">
-          <h3>正在修复文档指标</h3>
-          <div class="progress-info">
-            正在处理 {processCurrent} / {processTotal} 篇文档 ({processProgress}%)
+        {#if isProcessing}
+          <div class="fn__block form-item progress-section">
+            <h3>正在修复文档指标</h3>
+            <div class="progress-info">
+              正在处理 {processCurrent} / {processTotal} 篇文档 ({processProgress}%)
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" style="width: {processProgress}%"></div>
+            </div>
+            <p class="b3-label__text">正在扫描并修复文档指标，分页处理中，请耐心等待...</p>
+            <p class="b3-label__text">大量文档处理可能需要较长时间，请勿关闭窗口</p>
           </div>
-          <div class="progress-bar-container">
-            <div class="progress-bar" style="width: {processProgress}%"></div>
-          </div>
-          <p class="b3-label__text">正在扫描并修复文档指标，分页处理中，请耐心等待...</p>
-          <p class="b3-label__text">大量文档处理可能需要较长时间，请勿关闭窗口</p>
-        </div>
-      {/if}
-    {/if}
-
-    <div class="fn__block form-item">
-      <div class="form-item-row">
-        <div>
-          <span class="form-item-label">是否启用自定义SQL</span>
-          <div class="b3-label__text form-item-tip">{pluginInstance.i18n.customSqlEnabledTip}</div>
-        </div>
-        <input class="b3-switch" type="checkbox" bind:checked={customSqlEnabled} />
-      </div>
-    </div>
-
-    {#if customSqlEnabled}
-      <div class="fn__block form-item">
-        <span class="form-item-label">{pluginInstance.i18n.sqlContent}</span>
-        <div class="b3-label__text form-item-tip">{pluginInstance.i18n.sqlContentTip}</div>
-        <span class="fn__hr" />
-        <textarea
-          class="b3-text-field fn__block sql-editor"
-          id="regCode"
-          bind:value={sqlContent}
-          rows="4"
-          placeholder={pluginInstance.i18n.sqlContentTip}
-        />
+        {/if}
       </div>
     {/if}
-
     <div class="b3-dialog__action">
       <button class="b3-button b3-button--cancel" on:click={onCancel}>{pluginInstance.i18n.cancel}</button>
       <div class="fn__space" />
@@ -587,5 +591,74 @@
     background-color: var(--b3-theme-primary);
     border-radius: 5px;
     transition: width 0.5s ease;
+  }
+
+  .config__tab-header {
+    display: flex;
+    border-bottom: 1px solid var(--b3-border-color);
+    margin-bottom: 12px;
+  }
+  .tab-item {
+    padding: 8px 24px;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--b3-theme-on-background);
+    border-bottom: 2px solid transparent;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .tab-item.active {
+    color: var(--b3-theme-primary);
+    border-bottom: 2px solid var(--b3-theme-primary);
+    font-weight: bold;
+  }
+  .label-input-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .right-align-input {
+    width: 120px;
+    text-align: right;
+  }
+  .form-row.align-center {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .single-tip {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+    margin: 2px 0 8px 0;
+    text-align: left;
+  }
+  .left-align {
+    text-align: left;
+    padding-left: 2px;
+  }
+  .setting-title {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: var(--b3-theme-on-background);
+  }
+  .right-align-input[type="number"] {
+    width: 60px;
+    text-align: center;
+    margin-left: 8px;
+  }
+  @media (max-width: 600px) {
+    .form-row.align-center {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .right-align-input {
+      width: 100%;
+      margin-left: 0;
+    }
+    .form-item-label, .left-align {
+      padding-left: 0;
+    }
   }
 </style>

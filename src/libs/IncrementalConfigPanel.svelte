@@ -269,6 +269,42 @@
     </div>
   </div>
   
+  <!-- 自动重置设置 -->
+  <div class="config-section">
+    <h3>{pluginInstance.i18n.autoResetSettings}</h3>
+    
+    <div class="form-row">
+      <div class="form-group">
+        <label>
+          <input
+            type="checkbox"
+            bind:checked={storeConfig.autoResetOnStartup}
+          />
+          {pluginInstance.i18n.enableAutoReset}
+        </label>
+      </div>
+      </div>
+    </div>
+    
+  <!-- 绝对优先级顺序漫游概率设置 -->
+  <div class="config-section">
+    <h3>绝对优先级顺序漫游概率</h3>
+      <div class="form-row">
+        <div class="form-group">
+        <label for="absolutePriorityProb">概率（0~1，0为禁用，1为100%）：</label>
+          <input
+            type="number"
+          id="absolutePriorityProb"
+          min="0"
+          max="1"
+          step="0.1"
+          bind:value={storeConfig.absolutePriorityProb}
+          />
+        <p class="help-text">设置为0则禁用，设置为0.2表示20%的概率直接漫游优先级最高的未访问文档。</p>
+      </div>
+    </div>
+  </div>
+  
   <!-- 进度条显示 -->
   {#if isProcessing}
     <div class="progress-section">

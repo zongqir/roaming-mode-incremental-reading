@@ -46,9 +46,7 @@
  */
 export enum ReviewMode {
   /** 1.2.0 渐进式复习模式，基于优先级系统 */
-  Incremental = "incremental",
-  /** 1.1.2 一次性复习模式，依次查看所有文档 */
-  Once = "once",
+  Incremental = "incremental"
 }
 
 /**
@@ -72,12 +70,6 @@ class RandomDocConfig {
    * 当过滤模式为Notebook时使用的笔记本ID
    */
   public notebookId: string
-
-  /**
-   * 2.2 是否显示加载动画
-   * 控制漫游过程中是否显示加载动画
-   */
-  public showLoading: boolean
 
   /**
    * 2.3 是否启用自定义SQL
@@ -125,17 +117,31 @@ class RandomDocConfig {
    * 2.10 是否排除今日已访问文档
    * 控制是否在漫游时排除今天已经访问过的文档
    */
-  excludeTodayVisited = true
+  excludeVisited = true
 
   /**
-   * 2.11 构造函数
+   * 2.12 是否在启动时自动重置已访问文档记录
+   * 控制是否在每次启动时自动清空已访问文档记录
+   */
+  public autoResetOnStartup = false
+
+  /**
+   * 2.13 构造函数
    * 初始化配置对象，设置默认值
    */
   constructor() {
     this.filterMode = this.filterMode || FilterMode.Notebook
     this.rootId = this.rootId || ""
-    this.excludeTodayVisited = this.excludeTodayVisited !== false
+    this.excludeVisited = this.excludeVisited !== false
+    this.autoResetOnStartup = this.autoResetOnStartup ?? false
+    this.absolutePriorityProb = this.absolutePriorityProb ?? 0
   }
+
+  /**
+   * 2.14 绝对优先级顺序漫游概率（0~1，0为禁用，1为100%）
+   * 用户可设置，表示每次漫游有多少概率直接选择优先级最高的未访问文档
+   */
+  public absolutePriorityProb: number = 0;
 }
 
 export default RandomDocConfig

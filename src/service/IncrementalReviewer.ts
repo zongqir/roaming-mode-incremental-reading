@@ -205,8 +205,8 @@ class IncrementalReviewer {
         }
         
         // 3.1.5.3 处理查询结果
-        const pageDocs = pageResult.data as any[]
-        if (!pageDocs || pageDocs.length === 0) {
+        const pageDocs = Array.isArray(pageResult.data) ? pageResult.data : [];
+        if (pageDocs.length === 0) {
           this.pluginInstance.logger.warn(`分页 ${Math.floor(offset/pageSize) + 1} 没有返回文档，提前结束分页查询`)
           break
         }
@@ -365,6 +365,151 @@ class IncrementalReviewer {
     } catch (error) {
       this.pluginInstance.logger.error("获取文档总数时出错:", error)
       throw error
+    }
+  }
+
+  /**
+   * 获取所有文档的优先级列表，包含id、标题和优先级
+   * @returns 文档优先级列表
+   */
+  public async getPriorityList(): Promise<Array<{id: string; title?: string; priority: number}>> {
+    try {
+      // 获取最新过滤条件
+      const filterCondition = this.buildFilterCondition()
+      
+      // 获取符合条件的文档总数
+      const totalCount = await this.getTotalDocCount()
+      if (totalCount === 0) {
+        return [];
+      }
+      
+      // 使用分页查询获取所有文档
+      const pageSize = 50 // 每页获取50个文档
+      let allDocs = []
+      
+      for (let offset = 0; offset < totalCount; offset += pageSize) {
+        // 构建分页查询SQL
+        const pageSql = `
+          SELECT id, content FROM blocks 
+          WHERE type = 'd' 
+          ${filterCondition}
+          LIMIT ${pageSize} OFFSET ${offset}
+        `
+        
+        // 执行查询
+        const pageResult = await this.pluginInstance.kernelApi.sql(pageSql)
+        if (pageResult.code !== 0) {
+          this.pluginInstance.logger.error(`分页查询失败，错误码: ${pageResult.code}, 错误信息: ${pageResult.msg}`)
+          throw new Error(pageResult.msg)
+        }
+        
+        // 处理查询结果
+        const pageDocs = Array.isArray(pageResult.data) ? pageResult.data : [];
+        if (pageDocs.length === 0) {
+          break
+        }
+        
+        // 累计文档结果
+        allDocs = allDocs.concat(pageDocs)
+      }
+      
+      // 批量获取文档的优先级
+      const priorityList: Array<{id: string; title?: string; priority: number}> = []
+      const batchSize = 20
+      
+      for (let i = 0; i < allDocs.length; i += batchSize) {
+        const batchDocs = allDocs.slice(i, i + batchSize)
+        
+        // 并行处理一批文档
+        const batchResults = await Promise.all(
+          batchDocs.map(async (doc) => {
+            try {
+              const docData = await this.getDocPriorityData(doc.id)
+              const priorityResult = await this.calculatePriority(docData)
+              // 提取文档标题
+              let title = doc.content
+              if (title && title.length > 0) {
+                // 从content中提取标题，通常是第一行的markdown标题
+                const titleMatch = title.match(/^#+\s+(.+)$/m)
+                if (titleMatch && titleMatch[1]) {
+                  title = titleMatch[1].trim()
+                } else {
+                  // 或者使用内容的前30个字符
+                  title = title.substring(0, 30) + (title.length > 30 ? '...' : '')
+                }
+              } else {
+                title = '未命名文档'
+              }
+              
+              return { 
+                id: doc.id, 
+                title, 
+                priority: priorityResult.priority 
+              }
+            } catch (err) {
+              this.pluginInstance.logger.warn(`获取文档 ${doc.id} 优先级失败:`, err)
+              return { 
+                id: doc.id, 
+                title: '未知文档', 
+                priority: 5.0 // 默认优先级 
+              }
+            }
+          })
+        )
+        
+        priorityList.push(...batchResults)
+      }
+      
+      // 按优先级排序（从高到低）
+      priorityList.sort((a, b) => b.priority - a.priority)
+      return priorityList
+    } catch (error) {
+      this.pluginInstance.logger.error("获取文档优先级列表失败:", error)
+      throw error
+    }
+  }
+
+  /**
+   * 获取文档信息，包括ID和标题
+   * @param docId 文档ID
+   * @returns 文档信息
+   */
+  public async getDocInfo(docId: string): Promise<{id: string; title: string} | null> {
+    try {
+      if (!docId) return null;
+      
+      // 查询文档内容
+      const sql = `SELECT id, content FROM blocks WHERE id = '${docId}' AND type = 'd'`
+      const result = await this.pluginInstance.kernelApi.sql(sql)
+      
+      if (result.code !== 0 || !result.data || result.data.length === 0) {
+        return null;
+      }
+      
+      const doc = result.data[0];
+      
+      // 提取文档标题
+      let title = doc.content;
+      if (title && title.length > 0) {
+        // 从content中提取标题，通常是第一行的markdown标题
+        const titleMatch = title.match(/^#+\s+(.+)$/m)
+        if (titleMatch && titleMatch[1]) {
+          title = titleMatch[1].trim()
+        } else {
+          // 或者使用内容的前30个字符
+          title = title.substring(0, 30) + (title.length > 30 ? '...' : '')
+        }
+      } else {
+        title = '未命名文档'
+      }
+      
+      return {
+        id: docId,
+        title
+      };
+    } catch (error) {
+      this.pluginInstance.logger.error(`获取文档 ${docId} 信息失败:`, error)
+      return null;
     }
   }
 

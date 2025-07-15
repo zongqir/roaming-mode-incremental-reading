@@ -32,11 +32,17 @@
   function onPointerDown(e: PointerEvent, point) {
     if (point.id !== currentId) return;
     dragging = true;
-    dragX = e.offsetX;
+    // 直接使用clientX而不是offsetX，解决不跟手问题
+    const rect = (e.target as SVGElement).closest("svg").getBoundingClientRect();
+    dragX = e.clientX - rect.left;
     dragPriority = point.priority;
     lastSavedPriority = point.priority;
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    
+    // 阻止事件冒泡和默认行为，确保拖动平滑
+    e.stopPropagation();
+    e.preventDefault();
   }
 
   function onPointerMove(e: PointerEvent) {
@@ -49,22 +55,33 @@
     dragPriority = minPriority + (x / width) * (maxPriority - minPriority);
     dragPriority = Math.max(minPriority, Math.min(maxPriority, dragPriority));
     dispatch("dragging", { priority: dragPriority });
+    
+    // 阻止事件冒泡和默认行为
+    e.stopPropagation();
+    e.preventDefault();
   }
 
   function onPointerUp(e: PointerEvent) {
     if (!dragging) return;
-    // 不立即设置 dragging = false，保持拖动状态直到数据更新
+    // 发送变更事件
     dispatch("change", { priority: dragPriority });
     window.removeEventListener("pointermove", onPointerMove);
     window.removeEventListener("pointerup", onPointerUp);
+    
+    // 立即设置dragging为false，不要等待数据更新
+    // 这样可以避免拖动结束后的不跟手问题
+    dragging = false;
+    
+    // 阻止事件冒泡和默认行为
+    e.stopPropagation();
+    e.preventDefault();
   }
 
   // 监听 points 变化，当数据更新后重置拖动状态
   $: if (points && points.length > 0) {
     const currentPoint = points.find(p => p.id === currentId);
-    if (currentPoint && Math.abs(currentPoint.priority - dragPriority) < 0.01) {
-      // 数据已更新，重置拖动状态
-      dragging = false;
+    if (currentPoint) {
+      // 数据已更新，更新最后保存的优先级
       lastSavedPriority = currentPoint.priority;
     }
   }

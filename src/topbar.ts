@@ -221,13 +221,70 @@ const roamRecentDocument = async (pluginInstance: RandomDocPlugin) => {
 }
 
 /**
+ * 3.4 继续漫游
+ * 在当前渐进阅读面板中启动随机漫游
+ *
+ * @param pluginInstance 插件实例
+ */
+const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
+  try {
+    if (!pluginInstance.tabInstance || !pluginInstance.tabContentInstance) {
+      // 如果面板不存在，先创建面板
+      await triggerRandomDoc(pluginInstance)
+      return
+    }
+    
+    // 确保标签页激活
+    try {
+      const tabHead = document.querySelector(`[data-id="${pluginInstance.tabInstance.id}"]`)
+      if (tabHead) {
+        (tabHead as HTMLElement).click()
+      }
+    } catch (error) {
+      pluginInstance.logger.error("激活标签页失败:", error)
+    }
+    
+    // 等待一小段时间确保标签页完全激活
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // 模拟点击"继续漫游"按钮
+    try {
+      // 找到"继续漫游"按钮并点击
+      const buttons = pluginInstance.tabInstance.panelElement.querySelectorAll('button.primary-btn');
+      let continueButtonFound = false;
+      
+      for (let i = 0; i < buttons.length; i++) {
+        const btn = buttons[i];
+        // 查找按钮文本是"继续漫游"或包含"漫游中"的按钮
+        if (btn.textContent.includes('继续漫游') || btn.textContent.includes('漫游中')) {
+          (btn as HTMLElement).click();
+          pluginInstance.logger.info("成功模拟点击继续漫游按钮");
+          continueButtonFound = true;
+          break;
+        }
+      }
+      
+      if (!continueButtonFound) {
+        showMessage("未找到继续漫游按钮，请手动点击面板中的继续漫游按钮", 3000, "info");
+      }
+    } catch (error) {
+      pluginInstance.logger.error("模拟点击继续漫游按钮失败:", error);
+      showMessage("无法执行继续漫游，请手动点击面板中的继续漫游按钮", 3000, "info");
+    }
+  } catch (error) {
+    pluginInstance.logger.error("继续漫游失败:", error);
+    showMessage("继续漫游失败: " + error.message, 3000, "error");
+  }
+}
+
+/**
  * 4. 注册快捷键
  * 为插件功能注册快捷键
  *
  * @param pluginInstance 插件实例
  */
 export async function registerCommand(pluginInstance: RandomDocPlugin) {
-  // 4.1 注册漫游快捷键
+  // 4.1 注册开始漫游快捷键
   pluginInstance.addCommand({
     langKey: "startRandomDoc",
     hotkey: "⌥⌘M",
@@ -236,15 +293,26 @@ export async function registerCommand(pluginInstance: RandomDocPlugin) {
       await triggerRandomDoc(pluginInstance)
     },
   })
-  pluginInstance.logger.info("文档漫步快捷键已注册为 ⌥⌘M")
+  pluginInstance.logger.info("开始漫游快捷键已注册为 ⌥⌘M")
   
-  // 4.2 注册重置今日漫游记录快捷键
+  // 4.2 注册继续漫游快捷键
+  pluginInstance.addCommand({
+    langKey: "continueRandomDoc",
+    hotkey: "⌥⌘C",
+    callback: async () => {
+      pluginInstance.logger.info("快捷键已触发 ⌥⌘C")
+      await continueRandomDoc(pluginInstance)
+    },
+  })
+  pluginInstance.logger.info("继续漫游快捷键已注册为 ⌥⌘C")
+  
+  // 4.3 注册重置已访问记录快捷键
   pluginInstance.addCommand({
     langKey: "resetAllVisits",
     hotkey: "⌥⌘V",
     callback: async () => {
       pluginInstance.logger.info("快捷键已触发 ⌥⌘V")
-      // 4.2.1 调用重置并刷新方法
+      // 4.3.1 调用重置并刷新方法
       if (pluginInstance.tabContentInstance && pluginInstance.tabContentInstance.resetAndRefresh) {
         await pluginInstance.tabContentInstance.resetAndRefresh()
       } else {
@@ -252,5 +320,5 @@ export async function registerCommand(pluginInstance: RandomDocPlugin) {
       }
     }
   })
-  pluginInstance.logger.info("重置所有访问记录快捷键已注册为⌥⌘V")
+  pluginInstance.logger.info("重置已访问记录快捷键已注册为 ⌥⌘V")
 }

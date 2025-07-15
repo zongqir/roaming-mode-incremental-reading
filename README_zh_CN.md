@@ -37,6 +37,22 @@
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 近期更新</h2>
 
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.0.1版本更新 (2025.7.15)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 缺陷修复</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📊 图表交互修复</strong>: 修复点图中红点拖动调整不跟手的问题</li>
+<li><strong>🔄 优先级更新修复</strong>: 修复面板优先级调整后，点图红点不能及时更新的问题</li>
+<li><strong>🎨 UI优化</strong>: 删除继续漫游后的大加载图标及颜色变化，移动到了"继续漫游"按钮上</li>
+</ul>
+</li>
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 新增功能</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>⌨️ 快捷键</strong>: 增加快捷键，可方便快速开始漫游、继续漫游、重置已访问</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v2.0.0版本更新 (2025.7.12)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">
 <li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 重大更新</strong>
@@ -203,9 +219,9 @@
                 <summary style="color: #0369a1; cursor: pointer; font-weight: 500; font-size: 1.05em;">📊 <strong>可视化优先级管理</strong> - 条带状点图</summary>
                 <div style="margin-top: 0.8em; padding-top: 0.8em; border-top: 1px solid #f3e8ff;">
                 1. 通过条带状点图清晰查看所有文档的优先级分布<br>
-                2. 直接拖动调整文档优先级，相关指标会自动等比例变化<br>
+                2. 点图中直接拖动调整文档优先级，相关指标会自动等比例变化<br>
                 3. 在已漫游文档列表中可批量调节优先级<br>
-                4. 支持拖动排序，优先级会自动变为前后两个文档的平均数
+                4. 已漫游文档列表中支持拖动排序，优先级会自动变为前后两个文档的平均数
                 </div>
                 </details>
             </li>

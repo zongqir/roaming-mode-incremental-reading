@@ -40,7 +40,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 255, 0.2);
+    background: transparent; /* 移除蓝色背景，完全透明 */
     display: flex;
     justify-content: center;
     align-items: center;

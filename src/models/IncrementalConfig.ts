@@ -71,6 +71,23 @@ export interface DocPriorityData {
 }
 
 /**
+ * 1.3 文档基本信息
+ * 存储文档的基本信息，用于显示和处理
+ */
+export interface DocBasicInfo {
+  /** 1.3.1 文档ID */
+  id: string;
+  /** 1.3.2 文档标题 */
+  content?: string;
+  /** 1.3.3 优先级 */
+  priority?: number;
+  /** 1.3.4 最后访问时间 */
+  lastTime?: string;
+  /** 1.3.5 是否已访问 */
+  visited?: boolean;
+}
+
+/**
  * 2. 配置类
  * 渐进式阅读配置管理
  */

@@ -29,13 +29,15 @@
   import RandomDocConfig, { FilterMode } from "../models/RandomDocConfig"
   import { Dialog, openTab, showMessage } from "siyuan"
   import RandomDocPlugin from "../index"
-  import Loading from "./Loading.svelte"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import MetricsPanel from "./MetricsPanel.svelte"
   import PriorityBarChart from "./PriorityBarChart.svelte"
   import { isContentEmpty } from "../utils/utils"
   import { icons } from "../utils/svg"
   import { showSettingMenu } from "../topbar"
+  import type { DocPriorityData } from "../models/IncrementalConfig"
+  import type { DocBasicInfo } from "../models/IncrementalConfig"
+  import type { Metric } from "../models/IncrementalConfig"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -278,7 +280,7 @@
   /**
    * 渐进模式下的文档漫游
    */
-  const doIncrementalRandomDoc = async () => {
+  export const doIncrementalRandomDoc = async () => {
     // 每次漫游前强制刷新配置，确保概率配置为最新
     storeConfig = await pluginInstance.safeLoad(storeName)
     isLoading = true
@@ -840,56 +842,79 @@
 
   // 刷新优先级分布点图数据
   async function refreshPriorityBarPoints() {
-    if (!pr) return
+    if (!pr) return;
+    
+    // 保存当前文档的优先级（如果存在），以便在刷新后能够恢复
+    const currentDocPriority = priorityBarPoints.find(p => p.id === currentRndId)?.priority;
+    
     // 获取所有文档ID
-    const total = await pr.getTotalDocCount(storeConfig)
+    const total = await pr.getTotalDocCount(storeConfig);
     if (total === 0) {
-      priorityBarPoints = []
-      return
+      priorityBarPoints = [];
+      return;
     }
-    const filterCondition = pr.buildFilterCondition(storeConfig)
-    const pageSize = 50
-    let allDocs: Array<{ id: string }> = []
+    
+    const filterCondition = pr.buildFilterCondition(storeConfig);
+    const pageSize = 50;
+    let allDocs: Array<{ id: string }> = [];
     for (let offset = 0; offset < total; offset += pageSize) {
-      const sql = `SELECT id FROM blocks WHERE type = 'd' ${filterCondition} LIMIT ${pageSize} OFFSET ${offset}`
-      const res = await pluginInstance.kernelApi.sql(sql)
-      if (res.code !== 0) break
-      allDocs = allDocs.concat(res.data as any[])
-      if (!Array.isArray(res.data) || res.data.length === 0) break
+      const sql = `SELECT id FROM blocks WHERE type = 'd' ${filterCondition} LIMIT ${pageSize} OFFSET ${offset}`;
+      const res = await pluginInstance.kernelApi.sql(sql);
+      if (res.code !== 0) break;
+      allDocs = allDocs.concat(res.data as any[]);
+      if (!Array.isArray(res.data) || res.data.length === 0) break;
     }
+    
     // 并发获取优先级
-    const batchSize = 20
-    let tempList: Array<{ id: string; priority: number }> = []
+    const batchSize = 20;
+    let tempList: Array<{ id: string; priority: number }> = [];
     for (let i = 0; i < allDocs.length; i += batchSize) {
-      const batch = allDocs.slice(i, i + batchSize)
+      const batch = allDocs.slice(i, i + batchSize);
       const batchResults = await Promise.all(batch.map(async doc => {
         try {
-          const docData = await pr.getDocPriorityData(doc.id)
-          const priorityResult = await pr["calculatePriority"](docData)
+          const docData = await pr.getDocPriorityData(doc.id);
+          const priorityResult = await pr["calculatePriority"](docData);
           return {
             id: doc.id,
             priority: priorityResult.priority,
-          }
+          };
         } catch {
           return {
             id: doc.id,
             priority: 5.0,
-          }
+          };
         }
-      }))
-      tempList.push(...batchResults)
+      }));
+      tempList.push(...batchResults);
     }
-    priorityBarPoints = tempList
+    
+    // 如果当前文档存在且draggingPriority不为null，保持当前文档的拖动中优先级
+    if (currentRndId && draggingPriority !== null) {
+      const index = tempList.findIndex(p => p.id === currentRndId);
+      if (index >= 0) {
+        tempList[index].priority = draggingPriority;
+      }
+    } 
+    // 如果当前文档存在但没有拖动，保持之前的优先级，避免刷新时红点抖动
+    else if (currentRndId && currentDocPriority !== undefined) {
+      const index = tempList.findIndex(p => p.id === currentRndId);
+      // 当前文档优先级可能已经在数据库中更新，所以只有当差异很小时才使用之前的优先级
+      if (index >= 0 && Math.abs(tempList[index].priority - currentDocPriority) < 0.01) {
+        tempList[index].priority = currentDocPriority;
+      }
+    }
+    
+    priorityBarPoints = tempList;
     if (tempList.length > 0) {
-      priorityBarMin = Math.min(...tempList.map(d => d.priority))
-      priorityBarMax = Math.max(...tempList.map(d => d.priority))
+      priorityBarMin = Math.min(...tempList.map(d => d.priority));
+      priorityBarMax = Math.max(...tempList.map(d => d.priority));
       if (priorityBarMin === priorityBarMax) {
-        priorityBarMin = 0
-        priorityBarMax = 10
+        priorityBarMin = 0;
+        priorityBarMax = 10;
       }
     } else {
-      priorityBarMin = 0
-      priorityBarMax = 10
+      priorityBarMin = 0;
+      priorityBarMax = 10;
     }
   }
 
@@ -899,38 +924,63 @@
     draggingPriority = e.detail.priority
   }
   async function handlePriorityBarChange(e) {
-    const newPriority = e.detail.priority
-    if (!currentRndId || !pr) return
+    const newPriority = e.detail.priority;
+    if (!currentRndId || !pr) return;
     try {
-      // 获取所有指标
-      const metrics = pr.getMetrics()
-      // 计算总权重
-      const totalWeight = metrics.reduce((sum, m) => sum + m.weight, 0)
-      // 按权重分配每个指标的值，使归一化优先级等于 newPriority
-      await Promise.all(metrics.map(metric => {
-        // 归一化优先级 = sum(指标值 * 权重) / 总权重
-        // 这里简单分配：所有指标都设为 newPriority
-        // 更精细可按权重分配：metricValue = newPriority
-        return pr.updateDocMetric(currentRndId, metric.id, newPriority)
-      }))
+      // 获取当前文档的优先级数据
+      const docPriorityData = await pr.getDocPriorityData(currentRndId);
+      const metrics = pr.getMetrics();
+      const currentPriority = await pr["calculatePriority"](docPriorityData);
+      
+      // 使用与MetricsPanel相同的等比例调整逻辑
+      if (currentPriority.priority === 0) {
+        // 全部设为新优先级/权重和
+        let totalWeight = metrics.reduce((sum, m) => sum + m.weight, 0);
+        for (const metric of metrics) {
+          const v = totalWeight > 0 ? newPriority * (metric.weight / totalWeight) : newPriority;
+          await pr.updateDocMetric(currentRndId, metric.id, v);
+        }
+      } else {
+        // 等比例调整所有指标
+        const ratio = newPriority / currentPriority.priority;
+        for (const metric of metrics) {
+          const oldVal = docPriorityData.metrics[metric.id] || 0;
+          let v = oldVal * ratio;
+          v = Math.max(0, Math.min(10, v));
+          await pr.updateDocMetric(currentRndId, metric.id, v);
+        }
+      }
+      
       // 立即刷新当前文档优先级数据，同步到 MetricsPanel
       if (typeof pr.getDocPriorityData === 'function') {
-        const docPriorityData = await pr.getDocPriorityData(currentRndId)
-        docPriority = docPriorityData.metrics
+        const updatedData = await pr.getDocPriorityData(currentRndId);
+        docPriority = updatedData.metrics;
       }
+      
       // 刷新点图数据
-      await refreshPriorityBarPoints()
+      await refreshPriorityBarPoints();
     } catch (err) {
-      pluginInstance.logger.error("设置优先级失败", err)
-      showMessage("设置优先级失败: " + err.message, 3000, "error")
+      pluginInstance.logger.error("设置优先级失败", err);
+      showMessage("设置优先级失败: " + err.message, 3000, "error");
     }
-    draggingPriority = null
+    draggingPriority = null;
   }
 
   // 监听 MetricsPanel 的优先级变化事件
   async function handleMetricsPanelPriorityChange(e) {
-    // MetricsPanel 优先级变化后，刷新点图数据
-    await refreshPriorityBarPoints()
+    // 获取当前优先级
+    const newPriority = e.detail.priority;
+    
+    // 立即更新当前文档在点图中的位置
+    const updatedPointIndex = priorityBarPoints.findIndex(p => p.id === currentRndId);
+    if (updatedPointIndex >= 0) {
+      priorityBarPoints[updatedPointIndex].priority = newPriority;
+      // 创建新数组触发Svelte更新
+      priorityBarPoints = [...priorityBarPoints];
+    }
+    
+    // 全量刷新点图数据（异步操作，确保数据完整性）
+    await refreshPriorityBarPoints();
   }
 
   // events
@@ -1265,7 +1315,7 @@ const initEditableContent = async () => {
 </script>
 
 <div class="fn__flex-1 protyle" data-loading="finished">
-  <Loading show={isLoading} />
+  <!-- 移除Loading组件 -->
   <div class="protyle-content protyle-content--transition" data-fullwidth="true">
     <div class="protyle-title protyle-wysiwyg--attr" style="margin: 16px 96px 0px;">
       <div
@@ -1360,7 +1410,11 @@ const initEditableContent = async () => {
           <span class="custom-sql">当前使用自定义 SQL 漫游</span>
         {:else}
           <button class="action-item b3-button primary-btn btn-small" on:click={doIncrementalRandomDoc}>
-            {isLoading ? "漫游中..." : "继续漫游"}
+            {#if isLoading}
+              <span class="button-loading-icon"></span> 漫游中...
+            {:else}
+              继续漫游
+            {/if}
           </button>
           <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
           <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
@@ -1762,4 +1816,22 @@ const initEditableContent = async () => {
         color: #999
         font-size: 16px
         margin-right: 4px
+
+  /* 按钮加载图标 */
+  .button-loading-icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 4px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: button-spin 1s linear infinite;
+    vertical-align: text-top;
+  }
+  
+  @keyframes button-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 </style>

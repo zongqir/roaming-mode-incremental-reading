@@ -15,5 +15,8 @@
   "help": "Help",
   "autoResetSettings": "Auto Reset Visit Records",
   "autoResetOnStartup": "Auto Reset Visit Records",
-  "autoResetOnStartupTip": "When the plugin starts, automatically clear visit records."
+  "autoResetOnStartupTip": "When the plugin starts, automatically clear visit records.",
+  "startRandomDoc": "Start Roaming",
+  "continueRandomDoc": "Continue Roaming",
+  "resetAllVisits": "Reset Visits"
 }

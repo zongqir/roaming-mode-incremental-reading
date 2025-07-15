@@ -277,7 +277,7 @@
     
     // 更新本地状态
     docMetrics.set(metricId, newValue)
-    docMetrics = docMetrics // 触发Svelte更新界面
+    docMetrics = new Map(docMetrics) // 使用新Map实例触发Svelte更新界面
     
     // 重新计算优先级
     calculatePriority()
@@ -298,7 +298,7 @@
     
     // 更新本地状态
     docMetrics.set(metricId, newValue)
-    docMetrics = docMetrics // 触发Svelte更新界面
+    docMetrics = new Map(docMetrics) // 使用新Map实例触发Svelte更新界面
     
     // 重新计算优先级
     calculatePriority()
@@ -319,7 +319,7 @@
     
     // 更新本地状态
     docMetrics.set(metricId, newValue)
-    docMetrics = docMetrics // 触发Svelte更新界面
+    docMetrics = new Map(docMetrics) // 使用新Map实例触发Svelte更新界面
     
     // 重新计算优先级
     calculatePriority()
@@ -360,7 +360,7 @@
         docMetrics.set(metric.id, v)
       })
     }
-    docMetrics = new Map(docMetrics)
+    docMetrics = new Map(docMetrics) // 使用新Map实例触发Svelte更新界面
     calculatePriority()
     // 保存到文档
     for (const metric of metrics) {

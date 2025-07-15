@@ -15,5 +15,8 @@
   "help": "查看帮助",
   "autoResetSettings": "自动重置访问记录",
   "autoResetOnStartup": "自动重置访问记录",
-  "autoResetOnStartupTip": "每次启动插件时自动清空访问记录"
+  "autoResetOnStartupTip": "每次启动插件时自动清空访问记录",
+  "startRandomDoc": "开始漫游",
+  "continueRandomDoc": "继续漫游",
+  "resetAllVisits": "重置已访问"
 }

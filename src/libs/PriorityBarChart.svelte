@@ -3,11 +3,16 @@
 
   export let points: Array<{ id: string; priority: number }>; // 所有文档点
   export let currentId: string; // 当前文档ID
+  // 这两个参数不再用于显示计算，仅用于限制拖动范围
   export let minPriority: number = 0;
   export let maxPriority: number = 10;
   // 宽度自适应，内部坐标系固定800
   const width = 800;
   export let height: number = 48; // 控制纵向高度
+  
+  // 固定显示范围为0-10
+  const displayMin = 0;
+  const displayMax = 10;
 
   const dispatch = createEventDispatcher();
 
@@ -51,8 +56,11 @@
     let x = e.clientX - rect.left;
     x = Math.max(0, Math.min(width, x));
     dragX = x;
-    // 计算优先级
-    dragPriority = minPriority + (x / width) * (maxPriority - minPriority);
+    // 计算优先级 - 固定在0-10范围内
+    const rawValue = (x / width) * (displayMax - displayMin);
+    // 保留两位小数，先四舍五入到两位，再转回数字，确保精度一致
+    dragPriority = parseFloat(rawValue.toFixed(2));
+    // 然后限制在允许的minPriority和maxPriority之间
     dragPriority = Math.max(minPriority, Math.min(maxPriority, dragPriority));
     dispatch("dragging", { priority: dragPriority });
     
@@ -91,7 +99,7 @@
   $: currentX = dragging
     ? dragX
     : currentPoint
-    ? ((currentPoint.priority - minPriority) / (maxPriority - minPriority)) * width
+    ? (currentPoint.priority / (displayMax - displayMin)) * width
     : 0;
   $: currentY = currentPoint ? getY(currentId) : height / 2;
   $: currentPriority = dragging ? dragPriority : currentPoint ? currentPoint.priority : 0;
@@ -130,7 +138,7 @@
     {#each points as p (p.id)}
       {#if p.id !== currentId}
         <circle
-          cx={(p.priority - minPriority) / (maxPriority - minPriority) * width}
+          cx={(p.priority / (displayMax - displayMin)) * width}
           cy={getY(p.id)}
           r="5"
           fill="#90caf9"

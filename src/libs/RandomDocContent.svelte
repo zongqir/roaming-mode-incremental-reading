@@ -24,7 +24,7 @@
   -->
 
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte"
+  import { onMount, onDestroy, tick } from "svelte"
   import { storeName } from "../Constants"
   import RandomDocConfig, { FilterMode } from "../models/RandomDocConfig"
   import { Dialog, openTab, showMessage } from "siyuan"
@@ -82,17 +82,24 @@
   let priorityLoading = false
   let priorityList: any[] = []
 
-  // 优先级调整相关
-  let priorityInputValues: { [key: string]: string } = {}
-
   // 拖动排序相关
   let draggedItem: any = null
   let draggedIndex = -1
   let dragOverIndex = -1
 
-  // 设置优先级输入框的值
+  // 设置优先级输入框的值 - 不再需要
   function setPriorityInputValue(docId: string, value: number) {
-    priorityInputValues[docId] = value.toFixed(1)
+    // 不再使用这个函数来存储值
+  }
+
+  // 处理输入步进，修复小数点问题
+  function handleInputStep(e: Event) {
+    const input = e.target as HTMLInputElement
+    const value = parseFloat(input.value)
+    if (!isNaN(value)) {
+      // 确保保留两位小数
+      input.value = value.toFixed(2)
+    }
   }
 
   // 处理拖动开始
@@ -140,6 +147,15 @@
     }
 
     try {
+      // 暂时禁用所有输入，防止中间状态出现错误
+      const inputFields = document.querySelectorAll('.priority-sortable-list input[type="number"]')
+      inputFields.forEach((input: HTMLInputElement) => {
+        input.disabled = true
+      })
+      
+      // 记录被拖动的文档ID
+      const draggedDocId = draggedItem.id
+      
       // 计算新的优先级（上下两个条目的平均值）
       let newPriority = 5.0 // 默认值
       
@@ -160,28 +176,45 @@
       newPriority = Math.max(0, Math.min(10, newPriority))
 
       // 更新文档的指标参数
-      await updateDocPriorityByValue(draggedItem.id, newPriority)
+      await updateDocPriorityByValue(draggedDocId, newPriority)
 
       // 更新列表中的优先级
-      draggedItem.priority = newPriority
-      setPriorityInputValue(draggedItem.id, newPriority)
-
-      // 重新排序列表
-      priorityList.sort((a, b) => b.priority - a.priority)
-      priorityList = [...priorityList] // 触发Svelte更新
+      const draggedItemIndex = priorityList.findIndex(d => d.id === draggedDocId)
+      if (draggedItemIndex !== -1) {
+        priorityList[draggedItemIndex].priority = newPriority
+      }
+      
+      // 重新排序列表前进行深拷贝，确保数据引用完全刷新
+      const sortedList = JSON.parse(JSON.stringify(priorityList))
+      sortedList.sort((a, b) => b.priority - a.priority)
+      
+      // 设置新的列表（触发Svelte更新）
+      priorityList = sortedList
+      
+      // 等待DOM更新完成
+      await tick()
+      
+      // 重新启用所有输入
+      document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
+        input.disabled = false
+      })
 
       // 如果当前文档也在列表中，刷新点图
-      if (draggedItem.id === currentRndId) {
+      if (draggedDocId === currentRndId) {
         await refreshPriorityBarPoints()
         if (typeof pr.getDocPriorityData === 'function') {
           const docPriorityData = await pr.getDocPriorityData(currentRndId)
           docPriority = docPriorityData.metrics
         }
       }
-
     } catch (err) {
       pluginInstance.logger.error("拖动排序失败", err)
       showMessage("拖动排序失败: " + err.message, 3000, "error")
+      
+      // 重新启用所有输入
+      document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
+        input.disabled = false
+      })
     } finally {
       draggedItem = null
       draggedIndex = -1
@@ -211,11 +244,9 @@
     const doc = priorityList.find(d => d.id === docId)
     if (!doc) return
     
-    let v = parseFloat(priorityInputValues[docId] || doc.priority.toString())
-    if (isNaN(v)) v = doc.priority
-    v = Math.min(10, v + 1)
-    setPriorityInputValue(docId, v)
-    await handlePriorityInputInList(docId, v)
+    // 增加0.1并确保保留两位小数
+    let newValue = Math.min(10, parseFloat((doc.priority + 0.1).toFixed(2)))
+    await handlePriorityInputInList(docId, newValue)
   }
 
   // 减少优先级
@@ -223,36 +254,48 @@
     const doc = priorityList.find(d => d.id === docId)
     if (!doc) return
     
-    let v = parseFloat(priorityInputValues[docId] || doc.priority.toString())
-    if (isNaN(v)) v = doc.priority
-    v = Math.max(0, v - 1)
-    setPriorityInputValue(docId, v)
-    await handlePriorityInputInList(docId, v)
+    // 减少0.1并确保保留两位小数
+    let newValue = Math.max(0, parseFloat((doc.priority - 0.1).toFixed(2)))
+    await handlePriorityInputInList(docId, newValue)
   }
 
   // 处理优先级输入
-  async function handlePriorityInputInList(docId: string, newValue?: number) {
+  async function handlePriorityInputInList(docId: string, newValue: number) {
     if (!pr) return
     
-    let targetValue = newValue
-    if (targetValue === undefined) {
-      targetValue = parseFloat(priorityInputValues[docId])
-      if (isNaN(targetValue)) return
-    }
-    
-    targetValue = Math.max(0, Math.min(10, targetValue))
-    
     try {
-      await updateDocPriorityByValue(docId, targetValue)
+      // 确保保留两位小数
+      newValue = parseFloat(newValue.toFixed(2))
       
-      // 更新列表中的优先级
+      // 暂时禁用所有输入，防止中间状态出现错误
+      const inputFields = document.querySelectorAll('.priority-sortable-list input[type="number"]')
+      inputFields.forEach((input: HTMLInputElement) => {
+        input.disabled = true
+      })
+      
+      // 更新数据库中的优先级
+      await updateDocPriorityByValue(docId, newValue)
+      
+      // 找到并更新当前文档的优先级
       const docIndex = priorityList.findIndex(d => d.id === docId)
       if (docIndex !== -1) {
-        priorityList[docIndex].priority = targetValue
-        // 重新排序
-        priorityList.sort((a, b) => b.priority - a.priority)
-        priorityList = [...priorityList] // 触发Svelte更新
+        priorityList[docIndex].priority = newValue
       }
+      
+      // 重新排序列表前进行深拷贝，确保数据引用完全刷新
+      const sortedList = JSON.parse(JSON.stringify(priorityList))
+      sortedList.sort((a, b) => b.priority - a.priority)
+      
+      // 设置新的列表（触发Svelte完全重新渲染）
+      priorityList = sortedList
+      
+      // 等待DOM更新完成
+      await tick()
+      
+      // 重新启用所有输入
+      document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
+        input.disabled = false
+      })
       
       // 如果当前文档也在列表中，刷新点图
       if (docId === currentRndId) {
@@ -262,11 +305,14 @@
           docPriority = docPriorityData.metrics
         }
       }
-      
-      setPriorityInputValue(docId, targetValue)
     } catch (err) {
       pluginInstance.logger.error("设置优先级失败", err)
       showMessage("设置优先级失败: " + err.message, 3000, "error")
+      
+      // 重新启用所有输入
+      document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
+        input.disabled = false
+      })
     }
   }
 
@@ -755,7 +801,7 @@
     showPriorityDialog = true
     priorityLoading = true
     priorityList = []
-    priorityInputValues = {} // 清空输入框值
+    
     try {
       // 初始化审阅器
       if (!pr) {
@@ -813,12 +859,9 @@
       }
       // 按优先级降序
       tempList.sort((a, b) => b.priority - a.priority)
-      priorityList = tempList
       
-      // 初始化所有文档的优先级输入框值
-      priorityList.forEach(doc => {
-        setPriorityInputValue(doc.id, doc.priority)
-      })
+      // 设置排序后的列表
+      priorityList = tempList
     } finally {
       priorityLoading = false
     }
@@ -1478,8 +1521,7 @@ const initEditableContent = async () => {
               <div>暂无文档</div>
             {:else}
               <ul class="priority-sortable-list">
-                {#each priorityList as doc, index}
-                  {@const inputValue = priorityInputValues[doc.id] || doc.priority.toFixed(1)}
+                {#each priorityList as doc, index (doc.id)}
                   {@const isDragging = draggedItem?.id === doc.id}
                   {@const isDragOver = dragOverIndex === index}
                   <li 
@@ -1511,11 +1553,12 @@ const initEditableContent = async () => {
                         type="number" 
                         min="0" 
                         max="10" 
-                        step="0.1"
-                        value={inputValue}
+                        step="0.01"
+                        value={doc.priority.toFixed(2)}
+                        on:input={handleInputStep}
                         on:blur={(e) => handlePriorityInputInList(doc.id, parseFloat(e.currentTarget.value))}
                         on:keydown={(e) => e.key === 'Enter' && handlePriorityInputInList(doc.id, parseFloat(e.currentTarget.value))}
-                        style="width:40px;text-align:center;margin:0 4px;padding:2px 4px;border-radius:3px;border:1px solid var(--b3-theme-primary);font-weight:bold;font-size:13px;background-color:var(--b3-theme-surface);color:var(--b3-theme-primary);"
+                        style="width:50px;text-align:center;margin:0 4px;padding:2px 4px;border-radius:3px;border:1px solid var(--b3-theme-primary);font-weight:bold;font-size:13px;background-color:var(--b3-theme-surface);color:var(--b3-theme-primary);"
                       />
                       <button 
                         class="priority-btn" 

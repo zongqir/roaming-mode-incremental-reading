@@ -48,7 +48,7 @@
   let priorityInputValue: string = ""
 
   function setPriorityInput(val: number) {
-    priorityInputValue = val.toFixed(1)
+    priorityInputValue = val.toFixed(2)
   }
 
   function increasePriority() {
@@ -64,6 +64,16 @@
     v = Math.max(0, v - 1)
     setPriorityInput(v)
     handlePriorityInput()
+  }
+
+  // 处理输入步进，修复小数点问题
+  function handleInputStep(e: Event) {
+    const input = e.target as HTMLInputElement
+    const value = parseFloat(input.value)
+    if (!isNaN(value)) {
+      // 确保保留两位小数
+      input.value = value.toFixed(2)
+    }
   }
 
   // 初始化优先级输入框
@@ -379,10 +389,11 @@
       <span class="priority-label">优先级</span>
       <div class="priority-edit-group">
         <button class="priority-btn" on:click={decreasePriority}>-</button>
-        <input id="priority-input" type="number" min="0" max="10" step="0.1"
+        <input id="priority-input" type="number" min="0" max="10" step="0.01"
           bind:value={priorityInputValue}
           on:blur={handlePriorityInput}
           on:keydown={(e) => e.key === 'Enter' && handlePriorityInput()}
+          on:input={handleInputStep}
           class="priority-input"
         />
         <button class="priority-btn" on:click={increasePriority}>+</button>
@@ -415,10 +426,11 @@
               type="number" 
               min="0" 
               max="10" 
-              step="0.1"
+              step="0.01"
               class="metric-value" 
-              value={docMetrics.get(metric.id)?.toFixed(1) || "0.0"}
-              on:blur={(e) => updateMetricValue(metric.id, e.currentTarget.value)} 
+              value={docMetrics.get(metric.id)?.toFixed(2) || "0.00"}
+              on:blur={(e) => updateMetricValue(metric.id, e.currentTarget.value)}
+              on:input={handleInputStep}
               on:keydown={(e) => e.key === 'Enter' && updateMetricValue(metric.id, e.currentTarget.value)}
               style="background: linear-gradient(to right, var(--b3-theme-primary-light) {docMetrics.get(metric.id) * 10}%, transparent 0%);"
             />

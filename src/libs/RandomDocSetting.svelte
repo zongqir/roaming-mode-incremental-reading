@@ -29,9 +29,19 @@
   let processProgress = 0
   let processTotal = 0
   let processCurrent = 0
+  
+  // 批量随机重置文档优先级相关变量
+  let batchResetCurrentMin = 0;
+  let batchResetCurrentMax = 10;
+  let batchResetNewMin = 5;
+  let batchResetNewMax = 10;
+  let isProcessingBatchReset = false;
+  let batchResetProgress = 0;
+  let batchResetTotal = 0;
+  let batchResetCurrent = 0;
 
   let activeTab = 0;
-  const tabList = ["基本配置", "文档指标配置"];
+  const tabList = ["基本配置", "文档指标配置", "批量优先级重置"];
 
   const onSaveSetting = async () => {
     try {
@@ -161,6 +171,136 @@
     
     // 更新指标列表
     metrics = reviewer.getMetrics()
+  }
+
+  // 批量随机重置文档优先级
+  async function batchRandomResetPriority() {
+    try {
+      // 输入验证
+      if (batchResetCurrentMin > batchResetCurrentMax) {
+        showMessage("当前优先级下限不能大于上限", 3000, "error");
+        return;
+      }
+      if (batchResetNewMin > batchResetNewMax) {
+        showMessage("重置后优先级下限不能大于上限", 3000, "error");
+        return;
+      }
+      
+      // 设置处理状态
+      isProcessingBatchReset = true;
+      batchResetProgress = 0;
+      batchResetCurrent = 0;
+      batchResetTotal = 0;
+      
+      // 构建过滤条件
+      const filterCondition = reviewer.buildFilterCondition(storeConfig);
+      
+      // 构建SQL查询，找出所有在指定优先级范围内的文档
+      const metricIds = metrics.map(m => m.id);
+      let metricConditions = [];
+      
+      // 为每个指标创建条件：在指定优先级范围内的文档
+      for (const metricId of metricIds) {
+        const metricCondition = `
+          (
+            EXISTS (
+              SELECT 1 FROM attributes 
+              WHERE block_id = blocks.id 
+              AND name = 'custom-metric-${metricId}'
+              AND CAST(value AS REAL) >= ${batchResetCurrentMin}
+              AND CAST(value AS REAL) <= ${batchResetCurrentMax}
+            )
+          )
+        `;
+        metricConditions.push(metricCondition);
+      }
+      
+      // 组合所有条件，任一指标满足条件即可
+      const priorityCondition = metricConditions.length > 0 
+        ? `AND (${metricConditions.join(" OR ")})` 
+        : "";
+      
+      // 构建完整的查询语句
+      const countSql = `
+        SELECT COUNT(id) as total FROM blocks 
+        WHERE type = 'd' 
+        ${filterCondition}
+        ${priorityCondition}
+      `;
+      
+      // 执行查询，统计符合条件的文档数量
+      const countResult = await pluginInstance.kernelApi.sql(countSql);
+      if (countResult.code !== 0) {
+        throw new Error(countResult.msg);
+      }
+      
+      batchResetTotal = countResult.data?.[0]?.total || 0;
+      
+      // 检查是否有符合条件的文档
+      if (batchResetTotal === 0) {
+        isProcessingBatchReset = false;
+        showMessage("没有找到符合当前优先级范围的文档", 5000, "info");
+        return;
+      }
+      
+      // 分页获取所有符合条件的文档
+      const pageSize = 50;
+      let allDocs = [];
+      
+      for (let offset = 0; offset < batchResetTotal; offset += pageSize) {
+        const pageSql = `
+          SELECT id FROM blocks 
+          WHERE type = 'd' 
+          ${filterCondition}
+          ${priorityCondition}
+          LIMIT ${pageSize} OFFSET ${offset}
+        `;
+        
+        const pageResult = await pluginInstance.kernelApi.sql(pageSql);
+        if (pageResult.code !== 0) {
+          throw new Error(pageResult.msg);
+        }
+        
+        const pageDocs = pageResult.data as any[] || [];
+        allDocs = allDocs.concat(pageDocs);
+        
+        batchResetProgress = Math.floor((allDocs.length / batchResetTotal) * 40); // 前40%进度用于收集文档
+      }
+      
+      // 处理每个文档，随机设置新的优先级
+      for (let i = 0; i < allDocs.length; i++) {
+        const doc = allDocs[i];
+        batchResetCurrent = i + 1;
+        
+        // 计算处理进度 (40%~100%)
+        batchResetProgress = Math.floor(40 + (i / allDocs.length) * 60);
+        
+        // 为每个指标生成一个新的随机优先级值
+        const updatedMetrics = {};
+        for (const metric of metrics) {
+          // 生成随机值，保留两位小数
+          const randomValue = (Math.random() * (batchResetNewMax - batchResetNewMin) + batchResetNewMin).toFixed(2);
+          updatedMetrics[`custom-metric-${metric.id}`] = randomValue;
+        }
+        
+        // 更新文档指标
+        await pluginInstance.kernelApi.setBlockAttrs(doc.id, updatedMetrics);
+        
+        // 每处理20个文档显示一次进度
+        if (i % 20 === 0 || i === allDocs.length - 1) {
+          showMessage(`正在重置文档优先级: ${i+1}/${allDocs.length}`, 800, "info");
+        }
+      }
+      
+      // 处理完成
+      isProcessingBatchReset = false;
+      showMessage(`成功重置 ${allDocs.length} 篇文档的优先级`, 5000, "info");
+      
+    } catch (error) {
+      isProcessingBatchReset = false;
+      pluginInstance.logger.error("批量重置文档优先级失败", error);
+      showMessage(`批量重置文档优先级失败: ${error.message}`, 5000, "error");
+    }
   }
 
   const onCancel = async () => {
@@ -396,6 +536,92 @@
         {/if}
       </div>
     {/if}
+    
+    {#if activeTab === 2}
+      <!-- 批量优先级重置页内容 -->
+      <div class="fn__block form-item incremental-config-section">
+        <div class="config-section">
+          <h4>批量随机重置文档优先级</h4>
+          <p class="help-text">将指定优先级范围的文档重置为随机的新优先级值</p>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>当前优先级范围</label>
+              <div class="range-inputs">
+                <div class="range-input-group">
+                  <label for="currentPriorityMin">下限（含）</label>
+                  <input 
+                    type="number" 
+                    id="currentPriorityMin" 
+                    bind:value={batchResetCurrentMin} 
+                    min="0" 
+                    max="10" 
+                    step="0.01"
+                  />
+                </div>
+                <div class="range-input-group">
+                  <label for="currentPriorityMax">上限（含）</label>
+                  <input 
+                    type="number" 
+                    id="currentPriorityMax" 
+                    bind:value={batchResetCurrentMax} 
+                    min="0" 
+                    max="10" 
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>重置后优先级范围</label>
+              <div class="range-inputs">
+                <div class="range-input-group">
+                  <label for="newPriorityMin">下限（含）</label>
+                  <input 
+                    type="number" 
+                    id="newPriorityMin" 
+                    bind:value={batchResetNewMin} 
+                    min="0" 
+                    max="10" 
+                    step="0.01"
+                  />
+                </div>
+                <div class="range-input-group">
+                  <label for="newPriorityMax">上限（含）</label>
+                  <input 
+                    type="number" 
+                    id="newPriorityMax" 
+                    bind:value={batchResetNewMax} 
+                    min="0" 
+                    max="10" 
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group button-container">
+              {#if isProcessingBatchReset}
+                <div class="progress-info">
+                  正在处理 {batchResetCurrent} / {batchResetTotal} 篇文档 ({batchResetProgress}%)
+                </div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar" style="width: {batchResetProgress}%"></div>
+                </div>
+              {:else}
+                <button class="reset-button" on:click={batchRandomResetPriority} disabled={isProcessingBatchReset}>开始重置</button>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    {/if}
+    
     <div class="b3-dialog__action">
       <button class="b3-button b3-button--cancel" on:click={onCancel}>{pluginInstance.i18n.cancel}</button>
       <div class="fn__space" />
@@ -648,6 +874,56 @@
     text-align: center;
     margin-left: 8px;
   }
+  
+  /* 批量随机重置文档优先级相关样式 */
+  .range-inputs {
+    display: flex;
+    gap: 20px;
+    margin-top: 5px;
+  }
+  
+  .range-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .range-input-group label {
+    font-size: 12px;
+    color: var(--b3-theme-on-surface-light);
+  }
+  
+  .range-input-group input {
+    width: 80px;
+    text-align: center;
+  }
+  
+  .button-container {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+  
+  .reset-button {
+    padding: 6px 14px;
+    background-color: var(--b3-theme-primary-lighter);
+    color: var(--b3-theme-primary);
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  
+  .reset-button:hover {
+    background-color: var(--b3-theme-primary-light);
+  }
+  
+  .reset-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
   @media (max-width: 600px) {
     .form-row.align-center {
       flex-direction: column;

@@ -175,17 +175,19 @@
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 近期更新</h2>
 
-<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.1.1版本更新 (2025.7.17)</strong>
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.2.0版本更新 (2025.7.17)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">
 <li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 缺陷修复</strong>
 <ul style="margin: 0.2em 0; padding-left: 1em;">
-<li><strong>🖱️ 拖动体验优化</strong>: 修复点图中拖动点时不跟手、瞬移的问题</li>
+<li><strong>🔧 优先级属性同步修复</strong>: 修复5种修改文档优先级方式无法立即改变文档priority属性的问题</li>
+<li><strong>🔄 异步更新优化</strong>: 为所有优先级和指标调整方式添加了异步更新文档priority属性的功能</li>
 </ul>
 </li>
 <li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 新增功能</strong>
 <ul style="margin: 0.2em 0; padding-left: 1em;">
-<li><strong>📊 点图功能增强</strong>: 增强点图功能，鼠标悬停可查看文档标题，所有点均可拖动改变优先级</li>
-<li><strong>🔗 文档快速访问</strong>: 点图中，右击某点可新标签页打开该文档</li>
+<li><strong>🗑️ 数据清理功能</strong>: 增加清空所有文档指标和优先级数据功能，完全卸载插件前使用</li>
+<li><strong>🧹 全面数据清理</strong>: 清空功能会删除文档优先级、文档指标、漫游记录和访问记录属性数据</li>
+<li><strong>⚙️ 设置面板集成</strong>: 在设置面板批量优先级重置栏中新增清空数据按钮，支持进度显示和确认对话框</li>
 </ul>
 </li>
 </ul>

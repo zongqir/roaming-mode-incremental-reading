@@ -295,6 +295,11 @@
     // 保存到文档
     try {
       await reviewer.updateDocMetric(docId, metricId, newValue)
+      
+      // 同时更新文档的priority属性
+      if (typeof reviewer.updateDocPriority === 'function') {
+        await reviewer.updateDocPriority(docId, totalPriority)
+      }
     } catch (error) {
       errorMessage = `更新指标失败: ${error.message}`
       pluginInstance.logger.error(errorMessage, error)
@@ -316,6 +321,11 @@
     // 保存到文档
     try {
       await reviewer.updateDocMetric(docId, metricId, newValue)
+      
+      // 同时更新文档的priority属性
+      if (typeof reviewer.updateDocPriority === 'function') {
+        await reviewer.updateDocPriority(docId, totalPriority)
+      }
     } catch (error) {
       errorMessage = `增加指标值失败: ${error.message}`
       pluginInstance.logger.error(errorMessage, error)
@@ -337,6 +347,11 @@
     // 保存到文档
     try {
       await reviewer.updateDocMetric(docId, metricId, newValue)
+      
+      // 同时更新文档的priority属性
+      if (typeof reviewer.updateDocPriority === 'function') {
+        await reviewer.updateDocPriority(docId, totalPriority)
+      }
     } catch (error) {
       errorMessage = `减少指标值失败: ${error.message}`
       pluginInstance.logger.error(errorMessage, error)
@@ -378,6 +393,12 @@
         await reviewer.updateDocMetric(docId, metric.id, docMetrics.get(metric.id) || 0)
       } catch (e) {}
     }
+    
+    // 同时更新文档的priority属性
+    if (typeof reviewer.updateDocPriority === 'function') {
+      await reviewer.updateDocPriority(docId, totalPriority)
+    }
+    
     setPriorityInput(totalPriority)
   }
 </script>

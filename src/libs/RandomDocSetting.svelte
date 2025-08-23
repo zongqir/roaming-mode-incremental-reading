@@ -3,7 +3,7 @@
   import { onMount } from "svelte"
   import RandomDocConfig from "../models/RandomDocConfig"
   import { storeName } from "../Constants"
-  import { showMessage } from "siyuan"
+  import { showMessage, Dialog } from "siyuan"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import type { Metric } from "../models/IncrementalConfig"
 
@@ -39,6 +39,12 @@
   let batchResetProgress = 0;
   let batchResetTotal = 0;
   let batchResetCurrent = 0;
+  
+  // 清空所有文档数据相关变量
+  let isProcessingClearData = false;
+  let clearDataProgress = 0;
+  let clearDataTotal = 0;
+  let clearDataCurrent = 0;
 
   let activeTab = 0;
   const tabList = ["基本配置", "文档指标配置", "批量优先级重置"];
@@ -300,6 +306,61 @@
       isProcessingBatchReset = false;
       pluginInstance.logger.error("批量重置文档优先级失败", error);
       showMessage(`批量重置文档优先级失败: ${error.message}`, 5000, "error");
+    }
+  }
+
+  // 清空所有文档指标和优先级数据
+  async function clearAllDocumentData() {
+    try {
+      // 显示警告确认对话框
+      const warningMessage = `⚠️ 此操作不可逆！
+
+此操作将删除所有文档的以下属性：
+• 文档优先级 (custom-priority)
+• 所有文档指标 (custom-metric-*)
+• 漫游次数记录 (custom-roaming-count)
+• 漫游时间记录 (custom-roaming-last)
+• 访问次数记录 (custom-visit-count)
+
+完全卸载本插件前使用这个功能，删除文档优先级、文档指标、漫游记录和访问记录属性数据。
+好的插件，不乱拉屎(≖ᴗ≖๑)
+
+确定要继续吗？`
+
+      const confirmed = window.confirm(warningMessage)
+
+      if (!confirmed) {
+        return
+      }
+
+      // 设置处理状态
+      isProcessingClearData = true
+      clearDataProgress = 0
+      clearDataCurrent = 0
+      clearDataTotal = 0
+
+      // 调用IncrementalReviewer的清空方法
+      const clearResult = await reviewer.clearAllDocumentData((current, total) => {
+        clearDataCurrent = current
+        clearDataTotal = total
+        clearDataProgress = Math.floor((current / total) * 100)
+      })
+
+      // 处理完成
+      isProcessingClearData = false
+      
+      // 显示完成信息
+      showMessage(`已清空 ${clearResult.clearedDocs} 篇文档的指标和优先级数据`, 5000, "info")
+      
+      // 自动关闭设置页面
+      setTimeout(() => {
+        dialog.destroy()
+      }, 2000)
+
+    } catch (error) {
+      isProcessingClearData = false
+      pluginInstance.logger.error("清空所有文档数据失败", error)
+      showMessage(`清空数据失败: ${error.message}`, 5000, "error")
     }
   }
 
@@ -618,6 +679,29 @@
               {/if}
             </div>
           </div>
+          
+          <!-- 清空所有文档指标和优先级 -->
+          <div class="form-row">
+            <div class="form-group">
+              <div class="clear-data-section">
+                <h4>清空所有文档指标和优先级</h4>
+                <p class="help-text">完全卸载本插件前使用这个功能，删除文档优先级、文档指标、漫游记录和访问记录属性数据。</p>
+                <p class="help-text">好的插件，不乱拉屎(≖ᴗ≖๑)</p>
+                <div class="button-container">
+                  {#if isProcessingClearData}
+                    <div class="progress-info">
+                      正在清空 {clearDataCurrent} / {clearDataTotal} 篇文档 ({clearDataProgress}%)
+                    </div>
+                    <div class="progress-bar-container">
+                      <div class="progress-bar" style="width: {clearDataProgress}%"></div>
+                    </div>
+                  {:else}
+                    <button class="clear-data-button" on:click={clearAllDocumentData} disabled={isProcessingClearData}>清空所有数据</button>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     {/if}
@@ -922,6 +1006,37 @@
   .reset-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+  
+  /* 清空所有文档数据相关样式 */
+  .clear-data-section {
+    margin-top: 20px;
+    padding: 15px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: 6px;
+    background-color: var(--b3-theme-surface);
+  }
+  
+  .clear-data-button {
+    padding: 8px 16px;
+    background-color: #ff6b6b;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+  
+  .clear-data-button:hover {
+    background-color: #ff5252;
+  }
+  
+  .clear-data-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background-color: #ccc;
   }
   
   @media (max-width: 600px) {

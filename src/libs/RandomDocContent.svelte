@@ -233,6 +233,11 @@
       await Promise.all(metrics.map(metric => {
         return pr.updateDocMetric(docId, metric.id, newPriority)
       }))
+      
+      // 同时更新文档的priority属性
+      if (typeof pr.updateDocPriority === 'function') {
+        await pr.updateDocPriority(docId, newPriority)
+      }
     } catch (err) {
       pluginInstance.logger.error("更新文档优先级失败", err)
       throw err
@@ -995,6 +1000,11 @@
           v = Math.max(0, Math.min(10, v));
           await pr.updateDocMetric(docId, metric.id, v);
         }
+      }
+      
+      // 同时更新文档的priority属性
+      if (typeof pr.updateDocPriority === 'function') {
+        await pr.updateDocPriority(docId, newPriority);
       }
       
       // 如果更新的是当前文档，立即刷新当前文档优先级数据，同步到 MetricsPanel

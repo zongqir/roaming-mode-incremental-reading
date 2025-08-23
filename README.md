@@ -175,17 +175,19 @@
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 Recent Updates</h2>
 
-<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.1.1 Update (2025.7.17)</strong>
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.2.0 Update (2025.7.17)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">
 <li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 Bug Fixes</strong>
 <ul style="margin: 0.2em 0; padding-left: 1em;">
-<li><strong>🖱️ Drag Experience Optimization</strong>: Fixed issue with dots not following cursor smoothly during dragging in chart</li>
+<li><strong>🔧 Priority Attribute Sync Fix</strong>: Fixed issue where 5 methods of modifying document priority couldn't immediately change document priority attributes</li>
+<li><strong>🔄 Async Update Optimization</strong>: Added async update functionality for document priority attributes to all priority and metric adjustment methods</li>
 </ul>
 </li>
 <li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 New Features</strong>
 <ul style="margin: 0.2em 0; padding-left: 1em;">
-<li><strong>📊 Enhanced Chart Functionality</strong>: Enhanced chart functionality, hover to view document titles, all dots can be dragged to change priority</li>
-<li><strong>🔗 Quick Document Access</strong>: Right-click on any dot in the chart to open the document in a new tab</li>
+<li><strong>🗑️ Data Cleanup Function</strong>: Added function to clear all document metrics and priority data, use before completely uninstalling the plugin</li>
+<li><strong>🧹 Comprehensive Data Cleanup</strong>: Clear function removes document priority, metrics, roaming records and visit count attribute data</li>
+<li><strong>⚙️ Settings Panel Integration</strong>: Added clear data button in batch priority reset section of settings panel with progress display and confirmation dialog</li>
 </ul>
 </li>
 </ul>

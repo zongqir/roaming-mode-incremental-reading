@@ -482,7 +482,7 @@ class IncrementalReviewer {
       const sql = `SELECT id, content FROM blocks WHERE id = '${docId}' AND type = 'd'`
       const result = await this.pluginInstance.kernelApi.sql(sql)
       
-      if (result.code !== 0 || !result.data || result.data.length === 0) {
+      if (result.code !== 0 || !result.data || !Array.isArray(result.data) || result.data.length === 0) {
         return null;
       }
       
@@ -834,6 +834,30 @@ class IncrementalReviewer {
   private async calculatePriority(docData: DocPriorityData): Promise<{ priority: number }> {
     // 直接使用incrementalConfig计算优先级，不再进行指标修复
     return this.incrementalConfig.calculatePriority(docData);
+  }
+
+  /**
+   * 4.4 更新文档的优先级属性
+   * 直接设置文档的custom-priority属性
+   * 
+   * @param docId 文档ID
+   * @param priority 新的优先级值
+   */
+  public async updateDocPriority(docId: string, priority: number): Promise<void> {
+    try {
+      // 4.4.1 确保值在0-10之间
+      const clampedPriority = Math.max(0, Math.min(10, priority))
+      
+      // 4.4.2 更新文档的优先级属性
+      await this.pluginInstance.kernelApi.setBlockAttrs(docId, {
+        "custom-priority": clampedPriority.toFixed(4)
+      })
+      
+      this.pluginInstance.logger.info(`已更新文档 ${docId} 的优先级为 ${clampedPriority.toFixed(4)}`)
+    } catch (error) {
+      this.pluginInstance.logger.error(`更新文档 ${docId} 的优先级失败`, error)
+      throw error
+    }
   }
 
   /**
@@ -1238,6 +1262,162 @@ class IncrementalReviewer {
    */
   private buildEmptyFilterCondition(): string {
     return ""
+  }
+
+  /**
+   * 7.3 清空所有文档的指标和优先级数据
+   * 完全卸载插件前使用，删除所有相关属性
+   * 
+   * @param progressCallback 可选的进度回调函数
+   * @returns 清理结果统计信息
+   */
+  public async clearAllDocumentData(
+    progressCallback?: (current: number, total: number) => void
+  ): Promise<{
+    totalDocs: number,
+    clearedDocs: number,
+    clearedMetricsCount: number,
+    clearedPriorityCount: number,
+    clearedRoamingCount: number,
+    clearedRoamingLast: number,
+    clearedVisitCount: number
+  }> {
+    try {
+      // 7.3.1 使用空过滤条件，处理所有文档
+      const filterCondition = this.buildEmptyFilterCondition()
+      this.pluginInstance.logger.info("清空数据: 使用空过滤条件，将处理所有文档")
+      
+      // 7.3.2 初始化统计变量
+      let totalClearedDocs = 0
+      let totalClearedMetrics = 0
+      let totalClearedPriority = 0
+      let totalClearedRoamingCount = 0
+      let totalClearedRoamingLast = 0
+      let totalClearedVisitCount = 0
+      
+      // 7.3.3 获取所有文档总数
+      const countSql = `
+        SELECT COUNT(id) AS total FROM blocks 
+        WHERE type = 'd' 
+        ${filterCondition}
+      `
+      
+      const countResult = await this.pluginInstance.kernelApi.sql(countSql)
+      if (countResult.code !== 0) {
+        throw new Error(countResult.msg)
+      }
+      
+      const totalDocCount = countResult.data?.[0]?.total || 0
+      this.pluginInstance.logger.info(`符合条件的文档总数: ${totalDocCount}`)
+      
+      if (totalDocCount === 0) {
+        return { 
+          totalDocs: 0, 
+          clearedDocs: 0, 
+          clearedMetricsCount: 0, 
+          clearedPriorityCount: 0,
+          clearedRoamingCount: 0,
+          clearedRoamingLast: 0,
+          clearedVisitCount: 0
+        }
+      }
+      
+      // 7.3.4 使用分页查询处理所有文档
+      const pageSize = 100 // 每页处理100个文档
+      let processedCount = 0
+      let allDocs = []
+      
+      // 7.3.5 显示处理范围提示
+      showMessage(`将清空所有文档的指标、优先级、漫游记录和访问记录数据 (共${totalDocCount}篇)`, 3000, "info")
+      
+      // 7.3.6 获取所有文档ID
+      for (let offset = 0; offset < totalDocCount; offset += pageSize) {
+        // 7.3.6.1 使用分页查询获取文档
+        const pageSql = `
+          SELECT id FROM blocks 
+          WHERE type = 'd' 
+          ${filterCondition}
+          LIMIT ${pageSize} OFFSET ${offset}
+        `
+        
+        const pageResult = await this.pluginInstance.kernelApi.sql(pageSql)
+        if (pageResult.code !== 0) {
+          throw new Error(pageResult.msg)
+        }
+        
+        const pageDocs = pageResult.data as any[] || []
+        allDocs = allDocs.concat(pageDocs)
+        this.pluginInstance.logger.info(`获取分页 ${Math.floor(offset/pageSize) + 1}/${Math.ceil(totalDocCount/pageSize)}，共 ${pageDocs.length} 篇文档`)
+      }
+      
+      this.pluginInstance.logger.info(`总共获取 ${allDocs.length} 篇文档，将清空指标、优先级、漫游记录和访问记录数据`)
+      
+      // 7.3.7 顺序处理每篇文档
+      for (let i = 0; i < allDocs.length; i++) {
+        const doc = allDocs[i]
+        processedCount++
+        
+        // 7.3.7.1 调用进度回调
+        if (progressCallback) {
+          progressCallback(processedCount, allDocs.length)
+        }
+        
+        try {
+          // 7.3.7.2 清空所有指标属性
+          const metricsToClear = {}
+          this.incrementalConfig.metrics.forEach(metric => {
+            metricsToClear[`custom-metric-${metric.id}`] = ""
+          })
+          
+          // 7.3.7.3 清空优先级属性
+          metricsToClear["custom-priority"] = ""
+          
+          // 7.3.7.4 清空漫游和访问记录属性
+          metricsToClear["custom-roaming-count"] = ""
+          metricsToClear["custom-roaming-last"] = ""
+          metricsToClear["custom-visit-count"] = ""
+          
+          // 7.3.7.5 批量更新文档属性
+          await this.pluginInstance.kernelApi.setBlockAttrs(doc.id, metricsToClear)
+          
+          totalClearedDocs++
+          totalClearedMetrics += this.incrementalConfig.metrics.length
+          totalClearedPriority++
+          totalClearedRoamingCount++
+          totalClearedRoamingLast++
+          totalClearedVisitCount++
+          
+          // 7.3.7.5 每处理50个文档显示一次进度
+          if (i % 50 === 0 || i === allDocs.length - 1) {
+            const progress = Math.floor((processedCount / allDocs.length) * 100)
+            showMessage(`正在清空文档数据: ${processedCount}/${allDocs.length} (${progress}%)`, 1000, "info")
+          }
+          
+        } catch (error) {
+          this.pluginInstance.logger.error(`清空文档 ${doc.id} 的数据失败`, error)
+          // 继续处理下一个文档，不中断整个流程
+        }
+      }
+      
+      // 7.3.8 显示完成信息
+      this.pluginInstance.logger.info(`成功清空 ${totalClearedDocs}/${allDocs.length} 篇文档的数据`)
+      showMessage(`已清空 ${totalClearedDocs} 篇文档的指标、优先级、漫游记录和访问记录数据`, 5000, "info")
+      
+      return {
+        totalDocs: allDocs.length,
+        clearedDocs: totalClearedDocs,
+        clearedMetricsCount: totalClearedMetrics,
+        clearedPriorityCount: totalClearedPriority,
+        clearedRoamingCount: totalClearedRoamingCount,
+        clearedRoamingLast: totalClearedRoamingLast,
+        clearedVisitCount: totalClearedVisitCount
+      }
+      
+    } catch (error) {
+      this.pluginInstance.logger.error("清空所有文档数据失败", error)
+      showMessage(`清空数据失败: ${error.message}`, 5000, "error")
+      throw error
+    }
   }
 }
 

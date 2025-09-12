@@ -8,14 +8,18 @@
     "windows",
     "linux",
     "darwin",
-    "docker"
+    "docker",
+    "ios",
+    "android"
   ],
   "frontends": [
     "desktop",
-    "browser-desktop",
     "mobile",
-    "browser-mobile"
+    "browser-desktop",
+    "browser-mobile",
+    "desktop-window"
   ],
+  
   "displayName": {
     "en_US": "Roaming Mode Incremental Reading",
     "zh_CN": "漫游式渐进阅读"

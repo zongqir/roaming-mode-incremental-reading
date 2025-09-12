@@ -1494,30 +1494,53 @@ const initEditableContent = async () => {
             {/if}
           </select>
           <span class="custom-sql">当前使用自定义 SQL 漫游</span>
-        {:else}
-          <button class="action-item b3-button primary-btn btn-small" on:click={doIncrementalRandomDoc}>
-            {#if isLoading}
-              <span class="button-loading-icon"></span> 漫游中...
-            {:else}
-              继续漫游
-            {/if}
-          </button>
-          <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
-          <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
-            已漫游文档
-          </button>
-          <button class="action-item b3-button b3-button--outline btn-small" on:click={openPriorityDialog} title="优先级排序列表">
-            优先级排序表
-          </button>
-          <button
-            class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
-            on:click={() => showSettingMenu(pluginInstance)}
-            title={pluginInstance.i18n.setting}
-          >
-            {@html icons.iconSetting}
-          </button>
-        {/if}
-      </div>
+       {/if}
+
+              <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
+              <button
+                class="action-item b3-button primary-btn btn-small"
+                on:click={doIncrementalRandomDoc}
+                on:touchend|preventDefault={doIncrementalRandomDoc}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                继续漫游
+              </button>
+              <button
+                class="action-item b3-button primary-btn btn-small"
+                on:click={openDocEditor}
+                on:touchend|preventDefault={openDocEditor}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                打开该文档
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small reset-button"
+                on:click={openVisitedDocs}
+                on:touchend|preventDefault={openVisitedDocs}
+                title="查看已漫游文档列表"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                已漫游文档
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small"
+                on:click={openPriorityDialog}
+                on:touchend|preventDefault={openPriorityDialog}
+                title="优先级排序列表"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                优先级排序表
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+                on:click={() => showSettingMenu(pluginInstance)}
+                on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+                title={pluginInstance.i18n.setting}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                {@html icons.iconSetting}
+              </button>
+            </div>
 
       <!-- 已访问文档弹窗 -->
       {#if showVisitedDialog}

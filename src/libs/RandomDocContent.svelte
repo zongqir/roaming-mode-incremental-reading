@@ -1921,4 +1921,78 @@ const initEditableContent = async () => {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+
+  /* 移动端适配 */
+  @media (max-width: 768px) {
+    .protyle-content {
+      padding: 8px !important;
+    }
+
+    .protyle-title {
+      margin: 8px 16px !important;
+    }
+
+    .protyle-wysiwyg {
+      padding: 8px 16px !important;
+    }
+
+    .action-btn-group {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .action-item {
+      min-width: auto;
+      flex: 1;
+      margin: 4px;
+      /* 确保触摸区域足够大 */
+      min-height: 44px;
+      touch-action: manipulation;
+    }
+
+    .btn-small {
+      padding: 8px 16px !important;
+      font-size: 16px !important;
+      height: 44px !important;
+      /* 移动端按钮优化 */
+      min-width: 100px;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+
+    .visited-dialog, .priority-dialog {
+      width: 95% !important;
+      max-width: none !important;
+      margin: 20px auto;
+    }
+
+    .visited-dialog-content, .priority-dialog-content {
+      max-height: 60vh;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .protyle-title .protyle-title__input {
+      font-size: 18px !important;
+    }
+
+    .action-btn-group {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .action-item {
+      width: 100%;
+      margin: 2px 0;
+    }
+
+    .filter-label {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .b3-select {
+      width: 100%;
+    }
+  }
 </style>

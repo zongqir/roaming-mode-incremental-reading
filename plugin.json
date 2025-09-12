@@ -12,7 +12,9 @@
   ],
   "frontends": [
     "desktop",
-    "browser-desktop"
+    "browser-desktop",
+    "mobile",
+    "browser-mobile"
   ],
   "displayName": {
     "en_US": "Roaming Mode Incremental Reading",

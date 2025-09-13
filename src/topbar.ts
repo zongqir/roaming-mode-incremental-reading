@@ -245,8 +245,11 @@ const roamRecentDocument = async (pluginInstance: RandomDocPlugin) => {
       return
     }
 
-    // 3.3.3 在渐进阅读面板中显示最近打开的文档
-    await pluginInstance.tabContentInstance.roamSpecificDocument(recentDocId)
+        // 3.3.3 设置当前文档为指标编辑目标，不改变筛选条件
+        await pluginInstance.tabContentInstance.setCurrentDocForMetrics(recentDocId)
+    
+    // 3.3.4 显示成功消息
+    showMessage(`已设置当前文档为指标编辑目标，点击"继续漫游"将使用之前的筛选条件进行漫游`, 4000, "info")
     
   } catch (error) {
     pluginInstance.logger.error("漫游最近文档失败:", error)

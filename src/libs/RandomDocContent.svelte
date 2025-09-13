@@ -552,6 +552,63 @@
   }
 
   /**
+   * 设置当前文档为指标编辑目标 - 从topbar图标点击触发
+   * 仅更新指标面板，不影响筛选条件
+   * 
+   * @param docId 要设置为指标编辑目标的文档ID
+   */
+  export const setCurrentDocForMetrics = async (docId: string) => {
+    try {
+      pluginInstance.logger.info(`设置当前文档为指标编辑目标: ${docId}`)
+      
+      // 获取文档标题
+      let docTitle = docId
+      try {
+        docTitle = await pluginInstance.kernelApi.getDocTitleById(docId)
+        pluginInstance.logger.info(`已获取文档标题: ${docTitle}`)
+      } catch (error) {
+        pluginInstance.logger.warn(`无法获取文档标题: ${error.message}`)
+      }
+      
+      // 设置当前文档ID用于指标编辑，但不改变筛选条件
+      currentRndId = docId
+      title = docTitle
+      content = "" // 清空内容区域
+      
+      // 根据当前筛选条件生成提示信息
+      let filterDescription = "默认筛选条件"
+      if (filterMode === FilterMode.Notebook && selectedNotebooks.length > 0) {
+        filterDescription = `笔记本筛选 (已选择${selectedNotebooks.length}个笔记本)`
+      } else if (filterMode === FilterMode.Tag && selectedTags.length > 0) {
+        filterDescription = `标签筛选 (已选择${selectedTags.length}个标签)`
+      } else if (filterMode === FilterMode.Root && rootId) {
+        filterDescription = `根目录筛选 (${selectedDocTitle || rootId})`
+      } else if (filterMode === FilterMode.SQL && storeConfig.customSqlEnabled) {
+        filterDescription = "自定义SQL筛选"
+      }
+      
+      tips = `当前正在编辑文档「${docTitle}」的指标。点击"继续漫游"将使用「${filterDescription}」进行漫游。`
+
+      // 加载当前文档的指标数据
+      try {
+        if (pr && typeof pr.getDocPriorityData === 'function') {
+          const docPriorityData = await pr.getDocPriorityData(docId)
+          docPriority = docPriorityData.metrics
+          docMetrics = reviewer.getMetrics()
+          pluginInstance.logger.info(`已加载文档 ${docId} 的指标数据用于编辑`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn(`加载文档指标数据失败: ${error.message}`)
+      }
+
+      pluginInstance.logger.info(`指标编辑目标设置完成: ${docId} (${docTitle})`)
+    } catch (error) {
+      pluginInstance.logger.error("设置指标编辑目标失败:", error)
+      showMessage("设置指标编辑目标失败: " + error.message, 4000, "error")
+    }
+  }
+
+  /**
    * 漫游指定文档
    * 在渐进阅读面板中显示指定的文档
    * 
@@ -1652,6 +1709,7 @@ const initEditableContent = async () => {
     refreshPriorityBarPoints()
   }
 
+
   onDestroy(() => {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
@@ -1763,6 +1821,9 @@ const initEditableContent = async () => {
       // 开始漫游
       await doIncrementalRandomDoc()
     }
+
+    // 插件初始化完成
+    pluginInstance.logger.info("✅ 插件初始化完成")
   })
 </script>
 
@@ -2386,13 +2447,13 @@ const initEditableContent = async () => {
            <div class="mobile-metrics-content">
              {#if currentRndId}
                <MetricsPanel
-                 pluginInstance={pluginInstance}
-                 docId={currentRndId}
-                 reviewer={pr}
-                 metrics={docMetrics}
-                 {docPriority}
-                 forceExpanded={true}
-                 on:priorityChange={handleMetricsPanelPriorityChange}
+                pluginInstance={pluginInstance}
+                docId={currentRndId}
+                reviewer={pr}
+                metrics={docMetrics}
+                {docPriority}
+                forceExpanded={true}
+                on:priorityChange={handleMetricsPanelPriorityChange}
                />
              {:else}
                <div>请先选择一个文档</div>

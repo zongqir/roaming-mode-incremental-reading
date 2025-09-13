@@ -248,8 +248,8 @@ const roamRecentDocument = async (pluginInstance: RandomDocPlugin) => {
         // 3.3.3 直接打开该文档进行渐进式阅读
         await pluginInstance.tabContentInstance.openSpecificDocForReading(recentDocId)
     
-    // 3.3.4 显示成功消息
-    showMessage(`已打开当前文档进行渐进式阅读`, 4000, "info")
+    // 3.3.4 静默完成，不显示提示消息
+    // showMessage(`已打开当前文档进行渐进式阅读`, 4000, "info")
     
   } catch (error) {
     pluginInstance.logger.error("漫游最近文档失败:", error)

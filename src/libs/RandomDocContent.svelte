@@ -839,7 +839,7 @@
       }
       // 复用pr内部分页SQL逻辑，手动获取所有文档ID
       const filterCondition = pr.buildFilterCondition(storeConfig)
-      const pageSize = 50
+      const pageSize = 3000 // 本地SQLite性能优秀，支持大批量查询
       let allDocs: Array<{id: string}> = []
       for (let offset = 0; offset < total; offset += pageSize) {
         const sql = `SELECT id FROM blocks WHERE type = 'd' ${filterCondition} LIMIT ${pageSize} OFFSET ${offset}`

@@ -166,14 +166,42 @@
         <p style="margin: 0.5em 0;">If Roaming Mode Incremental Reading helps your learning, please consider giving a like or buying a coffee. This encourages the author to keep optimizing and developing more useful features:</p>
         <div style="margin: 1em 0; text-align: center;">
             <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
-                 alt="Donation QR Code"
+                 alt="Desktop Donation QR Code"
                  style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <p style="margin: 0.5em 0; color: #666;">WeChat/Alipay</p>
+            <p style="margin: 0.5em 0; color: #666;">Desktop - WeChat/Alipay</p>
+        </div>
+        <div style="margin: 1em 0; text-align: center;">
+            <img src="https://i0.hdslb.com/bfs/openplatform/3b4d37a5285096d3493d09ca88280d9acf90129e.png@1e_1c.webp"
+                 alt="Mobile Tea Donation QR Code"
+                 style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <p style="margin: 0.5em 0; color: #666;">Mobile - Buy Tea for Author</p>
         </div>
     </div>
     <!-- Recent Updates -->
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 Recent Updates</h2>
+
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v3.0.0 Update (2025.9.13)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 Major Updates</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📱 Mobile Version</strong>: Full mobile support with optimized touch interactions and responsive design for all screen sizes</li>
+<li><strong>⚡ Performance Optimization</strong>: Optimized batch document attribute queries, reduced SQL requests, improved loading and recommendation speed</li>
+<li><strong>🏷️ Tag-based Queries</strong>: Support for multi-tag filtering with flexible tag combination and compound tag processing</li>
+<li><strong>🔧 Custom SQL Query Fixes</strong>: Resolved query errors and result anomalies in custom SQL mode</li>
+<li><strong>📂 WYSIWYG Root Directory Browsing</strong>: Intuitive document tree selection interface with hybrid input mode (tree selection + direct input)</li>
+<li><strong>🎨 Icon Update</strong>: Updated to green book icon, better aligned with plugin functionality</li>
+</ul>
+</li>
+<li style="margin: 0.3em 0;"><strong style="color: #f59e0b;">🔧 Technical Improvements</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📊 Cache Mechanism</strong>: Improved document count caching with 10-minute intelligent cache for better response speed</li>
+<li><strong>📱 Mobile UI Adaptation</strong>: Comprehensive mobile interface optimization with adjusted button sizes, spacing, and interactions</li>
+<li><strong>🔍 Tag Processing Logic</strong>: Enhanced tag query logic with OR condition combinations and compound tag parsing</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
 
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v2.2.0 Update (2025.7.17)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">

@@ -106,13 +106,47 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
 }
 
 /**
+ * 2.3 显示移动端漫游对话框
+ * 在移动端以对话框形式显示漫游功能
+ *
+ * @param pluginInstance 插件实例
+ */
+export const showMobileRoamingDialog = (pluginInstance: RandomDocPlugin) => {
+  // 2.3.1 设置对话框元素ID
+  const roamingId = "siyuan-mobile-roaming"
+
+  // 2.3.2 创建对话框
+  const d = new Dialog({
+    title: `${pluginInstance.i18n.randomDoc}`,
+    content: `<div id="${roamingId}"></div>`,
+    width: "95vw",
+    height: "80vh",
+  })
+
+  // 2.3.3 实例化漫游组件
+  new RandomDocContent({
+    target: document.getElementById(roamingId) as HTMLElement,
+    props: {
+      pluginInstance: pluginInstance,
+      dialog: d,  // 传递弹窗实例，支持组件内关闭弹窗和文档跳转
+    },
+  })
+}
+
+/**
  * 3. 触发文档漫游
  * 打开漫游标签页并启动漫游功能
  *
  * @param pluginInstance 插件实例
  */
 const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
-  // 3.1 检查标签页是否已存在
+  // 3.1 移动端使用对话框，桌面端使用标签页
+  if (pluginInstance.isMobile) {
+    showMobileRoamingDialog(pluginInstance)
+    return
+  }
+
+  // 3.2 检查标签页是否已存在
   if (!pluginInstance.tabInstance) {
     // 3.1.1 创建新标签页
     const tabInstance = openTab({

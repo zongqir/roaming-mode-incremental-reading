@@ -63,7 +63,7 @@ def get_plugin_name():
         sys.exit(1)
     # 获取插件名称
     # 加载 plugin.json
-    with open('./plugin.json', 'r') as file:
+    with open("./plugin.json", "r", encoding="utf-8") as file:
         plugin = json.load(file)
     plugin_name = plugin.get('name')
     if not plugin_name or plugin_name == '':

@@ -250,7 +250,7 @@
       }
       
       // 分页获取所有符合条件的文档
-      const pageSize = 50;
+      const pageSize = 3000; // 本地SQLite性能优秀，支持大批量查询
       let allDocs = [];
       
       for (let offset = 0; offset < batchResetTotal; offset += pageSize) {

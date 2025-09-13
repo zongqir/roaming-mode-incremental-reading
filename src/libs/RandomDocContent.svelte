@@ -41,6 +41,7 @@
 
   // props
   export let pluginInstance: RandomDocPlugin
+  export let dialog: any = null // 移动端弹窗实例，用于关闭弹窗和文档跳转
 
   // vars
   let isLoading = false
@@ -50,6 +51,20 @@
   let showNotebookSelector = false // 控制下拉框显示
   let filterMode = FilterMode.Notebook
   let rootId = ""
+  let selectedTags: string[] = []
+  let availableTags: string[] = []
+  let isTagsLoading = false
+  let showTagDropdown = false
+  
+  // 根文档选择器相关变量 - 混合输入模式
+  let isDocsLoading = false
+  let showDocSelector = false
+  let selectedDocTitle = ""
+  let currentLevel = "notebooks" // "notebooks" | "docs"
+  let selectedNotebookForDoc = null // 当前选中的笔记本
+  let rootDocsList: any[] = [] // 当前笔记本下的根文档列表
+  let showManualInput = false // 是否显示手动输入框
+  let manualInputId = "" // 手动输入的ID
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
   let currentRndId
@@ -81,6 +96,9 @@
   let showPriorityDialog = false
   let priorityLoading = false
   let priorityList: any[] = []
+
+  // 移动端文档指标弹窗
+  let showMobileMetricsDialog = false // 移动端文档指标弹窗状态，解决移动端空间不足问题
 
   // 拖动排序相关
   let draggedItem: any = null
@@ -333,8 +351,13 @@
    * 渐进模式下的文档漫游
    */
   export const doIncrementalRandomDoc = async () => {
-    // 每次漫游前强制刷新配置，确保概率配置为最新
-    storeConfig = await pluginInstance.safeLoad(storeName)
+    console.log("🚀 doIncrementalRandomDoc 被调用！")
+    console.log("📋 当前 storeConfig:", storeConfig)
+    console.log("🏷️ 当前 selectedTags:", selectedTags)
+    console.log("🔄 当前 filterMode:", filterMode)
+    
+    // 确保使用当前的最新配置，而不是重新读取存储中的配置
+    // 这样可以避免前端修改后立即执行时配置不同步的问题
     isLoading = true
     title = "漫游中..."
     content = ""
@@ -390,6 +413,15 @@
       }
       
       pluginInstance.logger.info(`已漫游到文档: ${currentRndId}`)
+      
+      // 记录文档漫游次数
+      try {
+        await pr.incrementRoamingCount(currentRndId)
+        pluginInstance.logger.info(`已记录文档 ${currentRndId} 的漫游访问`)
+      } catch (error) {
+        pluginInstance.logger.error(`记录文档漫游失败: ${error.message}`)
+        // 即使记录失败也继续执行，不影响文档显示
+      }
       
       try {
         // 获取文档块信息
@@ -506,13 +538,7 @@
         tips = `展卷乃无言的情意：以${selectionProbabilityText}的机遇，穿越星辰遇见你，三秋霜雪印马蹄。${total}篇文档已剩${remainingCount}。`
       }
       
-      // 增加文档的漫游次数
-      try {
-        await pr.incrementRoamingCount(currentRndId)
-      } catch (error) {
-        pluginInstance.logger.error("增加漫游次数失败:", error)
-        // 不影响主要功能，只记录错误
-      }
+      // 🚫 移除重复的漫游次数更新 - 已在上方统一处理
       
     } catch (e) {
       pluginInstance.logger.error("渐进复习出错:", e)
@@ -638,13 +664,13 @@
       
       tips = `展卷乃无言的情意：穿越星辰遇见你，三秋霜雪印马蹄。正在漫游指定文档。`
       
-      // 增加文档的漫游次数
+      // 记录文档漫游次数
       try {
         if (pr) {
           await pr.incrementRoamingCount(currentRndId)
         }
       } catch (error) {
-        pluginInstance.logger.error("增加漫游次数失败:", error)
+        pluginInstance.logger.error("记录文档漫游失败:", error)
         // 不影响主要功能，只记录错误
       }
       
@@ -835,7 +861,7 @@
       }
       // 复用pr内部分页SQL逻辑，手动获取所有文档ID
       const filterCondition = pr.buildFilterCondition(storeConfig)
-      const pageSize = 50
+      const pageSize = 3000 // 本地SQLite性能优秀，支持大批量查询
       let allDocs: Array<{id: string}> = []
       for (let offset = 0; offset < total; offset += pageSize) {
         const sql = `SELECT id FROM blocks WHERE type = 'd' ${filterCondition} LIMIT ${pageSize} OFFSET ${offset}`
@@ -886,6 +912,16 @@
   }
   function closePriorityDialog() {
     showPriorityDialog = false
+  }
+
+  // 移动端文档指标弹窗
+  // 移动端文档指标弹窗控制 - 解决移动端屏幕空间不足，将指标内容移至独立弹窗
+  function openMobileMetricsDialog() {
+    showMobileMetricsDialog = true
+  }
+
+  function closeMobileMetricsDialog() {
+    showMobileMetricsDialog = false
   }
   // 热力色条：优先级归一化，红-高，蓝-低
   function getHeatColor(priority: number, min: number, max: number) {
@@ -1073,6 +1109,7 @@
   const clearDoc = () => {
     currentRndId = undefined
     content = ""
+    title = pluginInstance.i18n.welcomeTitle
     tips = "条件已改变，请重新漫游！待从头，收拾旧山河，朝天阙！"
   }
 
@@ -1106,7 +1143,36 @@
     pluginInstance.logger.info("storeConfig saved currentSql =>", storeConfig)
   }
 
+  // 初始化配置数据
+  const initializeConfig = async function () {
+    if (storeConfig && storeConfig.tags) {
+      // 兼容处理：将字符串格式的tags转换为数组格式
+      if (typeof storeConfig.tags === 'string') {
+        selectedTags = storeConfig.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        // 更新配置为数组格式
+        storeConfig.tags = selectedTags
+        await pluginInstance.saveData(storeName, storeConfig)
+      } else if (Array.isArray(storeConfig.tags)) {
+        selectedTags = [...storeConfig.tags]
+      }
+    }
+  }
+
   const onFilterModeChange = async function () {
+    // 详细日志：记录切换前后的状态
+    console.log("🔄 筛选模式切换开始")
+    console.log("📋 当前前端filterMode:", filterMode)
+    console.log("📋 当前storeConfig.filterMode:", storeConfig?.filterMode)
+    console.log("📋 FilterMode.Tag 值:", FilterMode.Tag)
+    console.log("📋 是否等于标签模式:", filterMode === FilterMode.Tag)
+    
+    pluginInstance.logger.info("🔄 筛选模式切换开始", {
+      "前端filterMode": filterMode,
+      "切换前storeConfig.filterMode": storeConfig.filterMode,
+      "切换前storeConfig.notebookId": storeConfig.notebookId,
+      "切换前storeConfig.tags": storeConfig.tags
+    })
+    
     // 模式切换
     storeConfig.filterMode = filterMode
     await pluginInstance.saveData(storeName, storeConfig)
@@ -1114,9 +1180,31 @@
     // 重置文档
     clearDoc()
     
+    // 清除所有缓存，确保新模式不会使用旧模式的缓存数据
+    IncrementalReviewer.clearAllCache()
+    pluginInstance.logger.info("筛选模式切换，已清除所有缓存")
+    
+    // 🎯 关键修复：如果切换到标签模式，自动加载可用标签
+    if (filterMode === FilterMode.Tag) {
+      try {
+        await loadAvailableTags()
+      } catch (error) {
+        console.error("❌ 自动加载标签失败:", error)
+      }
+    }
+    
     // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
     if (storeConfig.reviewMode === "incremental") {
       pluginInstance.logger.info("筛选模式变更后重新初始化渐进模式...")
+      
+      // 详细日志：记录传递给IncrementalReviewer的配置
+      pluginInstance.logger.info("🔧 创建新IncrementalReviewer，配置为:", {
+        "filterMode": storeConfig.filterMode,
+        "notebookId": storeConfig.notebookId,
+        "rootId": storeConfig.rootId,
+        "tags": storeConfig.tags
+      })
+      
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
       
@@ -1124,12 +1212,30 @@
       await doIncrementalRandomDoc()
     }
     
-    pluginInstance.logger.info("storeConfig saved filterMode =>", storeConfig)
+    pluginInstance.logger.info("✅ storeConfig saved filterMode =>", storeConfig)
   }
 
   const onRootIdChange = async function () {
-    // 显示当前选择的名称
+    pluginInstance.logger.info("onRootIdChange 被调用, rootId:", rootId, "selectedDocTitle:", selectedDocTitle)
+    
+    // 如果有rootId但没有标题，立即获取文档标题
+    if (rootId && !selectedDocTitle) {
+      try {
+        const docTitle = await pluginInstance.kernelApi.getDocTitleById(rootId)
+        if (docTitle && docTitle !== "(未找到文档)" && docTitle !== "(获取失败)") {
+          selectedDocTitle = docTitle
+          pluginInstance.logger.info(`rootId变更时获取文档标题: ${rootId} -> ${selectedDocTitle}`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn("rootId变更时获取文档标题失败:", error)
+      }
+    }
+    
+    // 保存rootId和文档标题
     storeConfig.rootId = rootId
+    if (selectedDocTitle) {
+      storeConfig.rootDocTitle = selectedDocTitle
+    }
     await pluginInstance.saveData(storeName, storeConfig)
     
     // 重置文档
@@ -1146,6 +1252,229 @@
     }
     
     pluginInstance.logger.info("storeConfig saved rootId =>", storeConfig)
+  }
+
+  // 获取所有可用标签
+  const loadAvailableTags = async function () {
+    if (isTagsLoading) return
+    
+    isTagsLoading = true
+    showTagDropdown = true
+    
+    try {
+      // 确保 pr 实例存在，如果不存在则创建一个
+      if (!pr) {
+        pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      }
+      
+      availableTags = await pr.getAllAvailableTags()
+      pluginInstance.logger.info("成功加载标签列表", availableTags)
+    } catch (error) {
+      pluginInstance.logger.error("加载可用标签失败:", error)
+      availableTags = []
+    } finally {
+      isTagsLoading = false
+    }
+  }
+
+  // 切换标签选择
+  const toggleTag = function (tag: string) {
+    console.log("🏷️ toggleTag被调用 - 标签:", tag)
+    console.log("📋 点击前selectedTags:", selectedTags)
+    const index = selectedTags.indexOf(tag)
+    console.log("🔍 标签在数组中的索引:", index)
+    
+    if (index > -1) {
+      selectedTags = selectedTags.filter(t => t !== tag)
+      console.log("❌ 移除标签后:", selectedTags)
+    } else {
+      selectedTags = [...selectedTags, tag]
+      console.log("✅ 添加标签后:", selectedTags)
+    }
+    console.log("📊 最终selectedTags数量:", selectedTags.length)
+    // 移除自动保存，改为点击确定按钮时保存
+  }
+
+  // 关闭标签下拉框
+  const closeTagDropdown = function () {
+    showTagDropdown = false
+  }
+
+  // 确定标签选择
+  const confirmTagSelection = function () {
+    showTagDropdown = false
+    // 触发标签变更保存
+    onTagsChange()
+  }
+
+  // 全部取消标签选择
+  const clearAllTags = function () {
+    selectedTags = []
+    // 立即触发保存和更新
+    onTagsChange()
+  }
+
+  // 开始文档选择流程 - 显示笔记本列表
+  const startDocumentSelection = async function () {
+    if (isDocsLoading) return
+    
+    showDocSelector = true
+    currentLevel = "notebooks"
+    selectedNotebookForDoc = null
+    rootDocsList = []
+  }
+
+  // 选择笔记本，加载其下的根文档
+  const selectNotebookForDoc = async function (notebook: any) {
+    if (isDocsLoading) return
+    
+    isDocsLoading = true
+    selectedNotebookForDoc = notebook
+    currentLevel = "docs"
+    
+    try {
+      const result = await pluginInstance.kernelApi.getRootDocs(notebook.id)
+      
+      if (result.code !== 0) {
+        pluginInstance.logger.error(`获取文档列表失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        rootDocsList = []
+        return
+      }
+
+      const actualData = result.data || []
+      rootDocsList = actualData.map(doc => ({
+        id: doc.id,
+        title: doc.title || '(无标题)'
+      }))
+      
+      pluginInstance.logger.info(`获取到 ${rootDocsList.length} 个根文档`)
+    } catch (error) {
+      pluginInstance.logger.error("获取根文档列表失败", error)
+      rootDocsList = []
+    } finally {
+      isDocsLoading = false
+    }
+  }
+
+  // 返回笔记本选择
+  const backToNotebookSelection = function () {
+    currentLevel = "notebooks"
+    selectedNotebookForDoc = null
+    rootDocsList = []
+  }
+
+  // 选择文档
+  const selectDocument = async function (docId: string, docTitle: string) {
+    rootId = docId
+    selectedDocTitle = docTitle
+    showDocSelector = false
+    
+    // 保存配置
+    storeConfig.rootId = rootId
+    if (selectedDocTitle) {
+      storeConfig.rootDocTitle = selectedDocTitle
+    }
+    await pluginInstance.saveData(storeName, storeConfig)
+    
+    pluginInstance.logger.info(`已设置根文档为: ${docId} - ${docTitle}`)
+  }
+
+  // 响应式计算当前选中文档的标题
+  $: currentDocTitle = (() => {
+    if (!rootId) {
+      return "请选择文档"
+    }
+    
+    // 优先显示已缓存的文档标题
+    if (selectedDocTitle) {
+      return selectedDocTitle
+    }
+    
+    // 其次尝试从文档列表中查找
+    const doc = rootDocsList.find(d => d.id === rootId)
+    if (doc && doc.title) {
+      return doc.title
+    }
+    
+    // 如果都没有标题，显示ID片段作为临时占位符
+    return rootId.substring(0, 8) + "..."
+  })()
+
+  // 切换到手动输入模式
+  const switchToManualInput = function () {
+    showManualInput = true
+    showDocSelector = false
+    manualInputId = rootId || ""
+  }
+
+  // 处理手动输入ID的确认
+  const confirmManualInput = async function () {
+    if (!manualInputId.trim()) {
+      return
+    }
+
+    isDocsLoading = true
+    try {
+      // 获取文档标题
+      const docTitle = await pluginInstance.kernelApi.getDocTitleById(manualInputId.trim())
+      
+      // 更新rootId和标题
+      rootId = manualInputId.trim()
+      selectedDocTitle = docTitle
+      
+      // 关闭输入框
+      showManualInput = false
+      
+      // 保存配置
+      storeConfig.rootId = rootId
+      if (selectedDocTitle) {
+        storeConfig.rootDocTitle = selectedDocTitle
+      }
+      await pluginInstance.saveData(storeName, storeConfig)
+      
+      pluginInstance.logger.info(`手动输入完成，根文档: ${rootId} - ${docTitle}`)
+    } catch (error) {
+      pluginInstance.logger.error("处理手动输入失败:", error)
+      clearDoc()
+      tips = "处理手动输入失败，请重试"
+    } finally {
+      isDocsLoading = false
+    }
+  }
+
+  // 取消手动输入
+  const cancelManualInput = function () {
+    showManualInput = false
+    manualInputId = ""
+  }
+
+  const onTagsChange = async function () {
+    console.log("🔄 onTagsChange 被调用")
+    console.log("📋 当前 selectedTags:", selectedTags)
+    console.log("🏷️ selectedTags 类型:", typeof selectedTags)
+    console.log("📊 Array.isArray(selectedTags):", Array.isArray(selectedTags))
+    
+    // 保存标签配置
+    storeConfig.tags = selectedTags
+    console.log("💾 保存到 storeConfig.tags:", storeConfig.tags)
+    await pluginInstance.saveData(storeName, storeConfig)
+    
+    // 重置文档
+    clearDoc()
+    
+    // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
+    if (storeConfig.reviewMode === "incremental") {
+      console.log("🔄 标签变更后重新初始化渐进模式...")
+      pluginInstance.logger.info("标签变更后重新初始化渐进模式...")
+      pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      await pr.initIncrementalConfig()
+      
+      console.log("🚀 即将调用 doIncrementalRandomDoc")
+      // 自动开始新的漫游，避免用户手动点击
+      await doIncrementalRandomDoc()
+    }
+    
+    pluginInstance.logger.info("storeConfig saved tags =>", storeConfig)
   }
 
   const openDocEditor = async () => {
@@ -1361,6 +1690,21 @@ const initEditableContent = async () => {
     }
     filterMode = storeConfig.filterMode
     rootId = storeConfig?.rootId ?? ""
+    // 处理标签数据，确保数组格式正确
+    if (storeConfig?.tags) {
+      if (Array.isArray(storeConfig.tags)) {
+        selectedTags = [...storeConfig.tags]
+      } else if (typeof storeConfig.tags === 'string') {
+        // 兼容旧的字符串格式
+        selectedTags = storeConfig.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        // 更新配置为数组格式
+        storeConfig.tags = selectedTags
+      } else {
+        selectedTags = []
+      }
+    } else {
+      selectedTags = []
+    }
 
     // 处理自定义 sql
     if (storeConfig?.customSqlEnabled) {
@@ -1371,6 +1715,25 @@ const initEditableContent = async () => {
       }
       currentSql = storeConfig?.currentSql ?? sqlList[0].sql
       storeConfig.currentSql = currentSql
+    }
+
+    // 初始化文档标题
+    if (storeConfig?.rootDocTitle) {
+      selectedDocTitle = storeConfig.rootDocTitle
+      pluginInstance.logger.info(`从配置加载文档标题: ${selectedDocTitle}`)
+    } else if (rootId && !selectedDocTitle) {
+      // 如果配置中没有标题但有rootId，尝试获取文档标题
+      try {
+        selectedDocTitle = await pluginInstance.kernelApi.getDocTitleById(rootId)
+        if (selectedDocTitle && selectedDocTitle !== "(未找到文档)" && selectedDocTitle !== "(获取失败)") {
+          // 保存获取到的标题到配置
+          storeConfig.rootDocTitle = selectedDocTitle
+          await pluginInstance.saveData(storeName, storeConfig)
+          pluginInstance.logger.info(`初始化时获取并保存文档标题: ${rootId} -> ${selectedDocTitle}`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn("初始化时获取文档标题失败:", error)
+      }
     }
 
     // 初始化渐进模式
@@ -1415,109 +1778,547 @@ const initEditableContent = async () => {
         {title}
       </div>
     </div>
-    <div
-      class="protyle-wysiwyg protyle-wysiwyg--attr"
-      spellcheck="false"
-      style="padding: 16px 96px 281.5px;"
-      data-doc-type="NodeDocument"
-    >
-      <div class="action-btn-group">
-        <span class="filter-label">筛选:</span>
-        <select
-          bind:value={filterMode}
-          class="action-item b3-select fn__flex-center fn__size100"
-          on:change={onFilterModeChange}
-        >
-          <option value={FilterMode.Notebook}>笔记本</option>
-          <option value={FilterMode.Root}>根文档</option>
-        </select>
-        {#if filterMode === FilterMode.Notebook}
-          <div class="notebook-selector">
-            <button
-              class="action-item b3-select fn__flex-center fn__size150"
-              on:click={() => showNotebookSelector = !showNotebookSelector}
-            >
-              {#if selectedNotebooks.length === 0}
-                笔记本：请选择
-              {:else if selectedNotebooks.length === 1}
-                {getNotebookName(selectedNotebooks[0])}
-              {:else}
-                已选{selectedNotebooks.length}个笔记本
-              {/if}
-            </button>
-            {#if showNotebookSelector}
-              <div class="notebook-list">
-                {#each notebooks as notebook (notebook.id)}
-                  <label class="notebook-item">
-                    <input
-                      type="checkbox"
-                      checked={selectedNotebooks.includes(notebook.id)}
-                      on:change={() => toggleNotebook(notebook.id)}
-                    />
-                    {notebook.name}
-                  </label>
-                {/each}
-                <div class="confirm-button-container">
-                  <button
-                    class="b3-button b3-button--outline fn__size150"
-                    on:click={() => {
-                      showNotebookSelector = false;
-                      onNotebookChange();
-                    }}
-                  >
-                    确定
-                  </button>
-                </div>
-              </div>
-            {/if}
-          </div>
-        {:else}
-          <input
-            class="b3-text-field fn__size150"
-            bind:value={rootId}
-            on:change={onRootIdChange}
-            placeholder="输入根文档ID"
-          />
-        {/if}
-        {#if storeConfig?.customSqlEnabled}
-          <select
-            class="action-item b3-select fn__flex-center fn__size180 notebook-select"
-            bind:value={currentSql}
-            on:change={onSqlChange}
-          >
-            {#if sqlList && sqlList.length > 0}
-              {#each sqlList as s (s.sql)}
-                <option value={s.sql}>{s.name}</option>
-              {/each}
-            {:else}
-              <option value="">{pluginInstance.i18n.loading}...</option>
-            {/if}
+     <div
+       class="protyle-wysiwyg protyle-wysiwyg--attr"
+       spellcheck="false"
+       style="padding: 16px 96px 281.5px;"
+       data-doc-type="NodeDocument"
+     >
+       <!-- 关闭按钮 - 仅移动端显示 -->
+       <div class="close-button-container">
+         <button 
+           class="close-button"
+           on:click={() => {
+             if (dialog && typeof dialog.destroy === 'function') {
+               dialog.destroy()
+             } else {
+               // 备用方案：尝试通过DOM关闭
+               const dialogElement = document.querySelector('.b3-dialog__container')
+               if (dialogElement) {
+                 const closeBtn = dialogElement.querySelector('.b3-dialog__close')
+                 if (closeBtn && closeBtn instanceof HTMLElement) {
+                   closeBtn.click()
+                 }
+               }
+             }
+           }}
+           title="关闭"
+         >
+           ✕
+         </button>
+       </div>
+       <div class="action-btn-group">
+        <!-- 移动端专用布局 - 解决移动端按钮过大、布局混乱问题 -->
+        <div class="mobile-layout">
+          <!-- 第一行：筛选框 - 移动端优化布局，筛选元素独立一行 -->
+          <div class="mobile-row-1">
+             <select
+               bind:value={filterMode}
+               class="action-item b3-select fn__flex-center fn__size100"
+               on:change={onFilterModeChange}
+             >
+            <option value={FilterMode.Notebook}>笔记本</option>
+            <option value={FilterMode.Root}>根文档</option>
+            <option value={FilterMode.Tag}>标签</option>
           </select>
-          <span class="custom-sql">当前使用自定义 SQL 漫游</span>
-        {:else}
-          <button class="action-item b3-button primary-btn btn-small" on:click={doIncrementalRandomDoc}>
-            {#if isLoading}
-              <span class="button-loading-icon"></span> 漫游中...
-            {:else}
-              继续漫游
+             {#if filterMode === FilterMode.Notebook}
+               <div class="notebook-selector">
+                 <button
+                   class="action-item b3-select fn__flex-center fn__size150"
+                   on:click={() => showNotebookSelector = !showNotebookSelector}
+                 >
+                   {#if selectedNotebooks.length === 0}
+                     请选择
+                   {:else if selectedNotebooks.length === 1}
+                     {getNotebookName(selectedNotebooks[0])}
+                   {:else}
+                     已选{selectedNotebooks.length}个
+                   {/if}
+                 </button>
+                 {#if showNotebookSelector}
+                   <div class="notebook-list">
+                     {#each notebooks as notebook (notebook.id)}
+                       <label class="notebook-item">
+                         <input
+                           type="checkbox"
+                           checked={selectedNotebooks.includes(notebook.id)}
+                           on:change={() => toggleNotebook(notebook.id)}
+                         />
+                         {notebook.name}
+                       </label>
+                     {/each}
+                     <div class="confirm-button-container">
+                       <button
+                         class="b3-button b3-button--outline fn__size150"
+                         on:click={() => {
+                           showNotebookSelector = false;
+                           onNotebookChange();
+                         }}
+                       >
+                         确定
+                       </button>
+                     </div>
+                   </div>
+                 {/if}
+               </div>
+             {:else if filterMode === FilterMode.Root}
+               <div class="root-doc-selector">
+                 <button
+                   class="action-item b3-select fn__flex-center fn__size150"
+                   on:click={startDocumentSelection}
+                 >
+                   {currentDocTitle}
+                 </button>
+                 
+                 {#if showManualInput}
+                   <div class="manual-input-panel">
+                     <div class="input-header">
+                       <span class="input-title">输入文档ID</span>
+                       <button class="input-close" on:click={cancelManualInput}>✕</button>
+                     </div>
+                     <div class="input-content">
+                       <input
+                         class="b3-text-field manual-input"
+                         bind:value={manualInputId}
+                         placeholder="请输入文档ID..."
+                         on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                       />
+                       <div class="input-buttons">
+                         <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
+                         <button class="b3-button b3-button--outline input-btn" on:click={confirmManualInput}>确定</button>
+                       </div>
+                     </div>
+                   </div>
+                 {/if}
+                 
+                 {#if showDocSelector}
+                   <div class="doc-tree">
+                     {#if currentLevel === "notebooks"}
+                       <div class="tree-header">
+                         <span class="tree-title">选择笔记本</span>
+                         <button class="tree-manual-btn" on:click={switchToManualInput}>
+                           输入ID
+                         </button>
+                       </div>
+                       <div class="tree-content">
+                         {#each notebooks as notebook}
+                           <div 
+                             class="tree-item notebook-item" 
+                             on:click={() => selectNotebookForDoc(notebook)}
+                           >
+                             <span class="tree-icon">📚</span>
+                             <span class="tree-label">{notebook.name}</span>
+                             <span class="tree-arrow">▶</span>
+                           </div>
+                         {/each}
+                       </div>
+                     {:else if currentLevel === "docs"}
+                       <div class="tree-header">
+                         <button class="tree-back" on:click={backToNotebookSelection}>
+                           ← 返回
+                         </button>
+                         <span class="tree-title">{selectedNotebookForDoc?.name}</span>
+                         <button class="tree-manual-btn" on:click={switchToManualInput}>
+                           输入ID
+                         </button>
+                       </div>
+                       <div class="tree-content">
+                         {#if isDocsLoading}
+                           <div class="tree-loading">加载中...</div>
+                         {:else if rootDocsList.length > 0}
+                           {#each rootDocsList as doc}
+                             <div 
+                               class="tree-item doc-item" 
+                               on:click={() => selectDocument(doc.id, doc.title)}
+                             >
+                               <span class="tree-icon">📄</span>
+                               <span class="tree-label">{doc.title}</span>
+                             </div>
+                           {/each}
+                         {:else}
+                           <div class="tree-empty">该笔记本下没有根文档</div>
+                         {/if}
+                       </div>
+                     {/if}
+                   </div>
+                 {/if}
+               </div>
+             {:else if filterMode === FilterMode.Tag}
+               <div class="tag-selector">
+                 <button
+                   class="action-item b3-select fn__flex-center fn__size150"
+                   on:click={loadAvailableTags}
+                 >
+                   {#if selectedTags.length === 0}
+                     请选择标签
+                   {:else if selectedTags.length === 1}
+                     {selectedTags[0]}
+                   {:else}
+                     已选{selectedTags.length}个标签
+                   {/if}
+                 </button>
+                 
+                 {#if showTagDropdown && !isTagsLoading}
+                   <div class="tag-list">
+                     {#if availableTags.length > 0}
+                       {#each availableTags as tag}
+                         <label class="tag-item">
+                           <input
+                             type="checkbox"
+                             checked={selectedTags.includes(tag)}
+                             on:change={() => toggleTag(tag)}
+                           />
+                           #{tag}
+                         </label>
+                       {/each}
+                     {:else}
+                       <div class="tag-empty">没有找到标签</div>
+                     {/if}
+                     <div class="confirm-button-container">
+                       <button
+                         class="b3-button b3-button--outline clear-all-btn"
+                         on:click={clearAllTags}
+                       >
+                         全部取消
+                       </button>
+                       <button
+                         class="b3-button b3-button--outline confirm-btn"
+                         on:click={confirmTagSelection}
+                       >
+                         确定
+                       </button>
+                     </div>
+                   </div>
+                 {/if}
+                 
+                 {#if isTagsLoading}
+                   <div class="tag-loading">加载中...</div>
+                 {/if}
+               </div>
+             {/if}
+             {#if storeConfig?.customSqlEnabled}
+               <select
+                 class="action-item b3-select fn__flex-center fn__size180 notebook-select"
+                 bind:value={currentSql}
+                 on:change={onSqlChange}
+               >
+                 {#if sqlList && sqlList.length > 0}
+                   {#each sqlList as s (s.sql)}
+                     <option value={s.sql}>{s.name}</option>
+                   {/each}
+                 {:else}
+                   <option value="">{pluginInstance.i18n.loading}...</option>
+                 {/if}
+               </select>
+               <span class="custom-sql">当前使用自定义 SQL 漫游</span>
             {/if}
-          </button>
-          <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
-          <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
-            已漫游文档
-          </button>
-          <button class="action-item b3-button b3-button--outline btn-small" on:click={openPriorityDialog} title="优先级排序列表">
-            优先级排序表
-          </button>
-          <button
-            class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
-            on:click={() => showSettingMenu(pluginInstance)}
-            title={pluginInstance.i18n.setting}
-          >
-            {@html icons.iconSetting}
-          </button>
-        {/if}
-      </div>
+           </div>
+
+          <!-- 继续漫游按钮独立一行 - 按用户要求独立成行，占满整行宽度 -->
+          <div class="mobile-continue-row">
+             <button
+               class="action-item b3-button primary-btn btn-small continue-btn"
+               on:click={doIncrementalRandomDoc}
+               on:touchend|preventDefault={doIncrementalRandomDoc}
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               继续漫游
+             </button>
+           </div>
+
+          <!-- 第二行：功能按钮 - 文档指标 + 已漫游文档 + 优先级排序表 + 设置 -->
+          <div class="mobile-row-2">
+             <!-- 文档指标折叠按钮 -->
+             <div class="mobile-metrics-toggle" style="display: {currentRndId ? 'block' : 'none'};">
+               <button 
+                 class="action-item b3-button b3-button--outline btn-small"
+                 on:click={openMobileMetricsDialog}
+                 style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+               >
+                 文档指标
+               </button>
+             </div>
+             
+             <button
+               class="action-item b3-button b3-button--outline btn-small reset-button"
+               on:click={openVisitedDocs}
+               on:touchend|preventDefault={openVisitedDocs}
+               title="查看已漫游文档列表"
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               已漫游
+             </button>
+             <button
+               class="action-item b3-button b3-button--outline btn-small"
+               on:click={openPriorityDialog}
+               on:touchend|preventDefault={openPriorityDialog}
+               title="优先级排序列表"
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               优先级
+             </button>
+             <button
+               class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+               on:click={() => showSettingMenu(pluginInstance)}
+               on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+               title={pluginInstance.i18n.setting}
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               {@html icons.iconSetting}
+             </button>
+           </div>
+         </div>
+
+        <!-- 桌面端原有布局 - 保持原有桌面端布局不变 -->
+        <div class="desktop-layout">
+           <span class="filter-label">筛选:</span>
+           <select
+             bind:value={filterMode}
+             class="action-item b3-select fn__flex-center fn__size100"
+             on:change={onFilterModeChange}
+           >
+            <option value={FilterMode.Notebook}>笔记本</option>
+            <option value={FilterMode.Root}>根文档</option>
+            <option value={FilterMode.Tag}>标签</option>
+          </select>
+           {#if filterMode === FilterMode.Notebook}
+             <div class="notebook-selector">
+               <button
+                 class="action-item b3-select fn__flex-center fn__size150"
+                 on:click={() => showNotebookSelector = !showNotebookSelector}
+               >
+                 {#if selectedNotebooks.length === 0}
+                   请选择
+                 {:else if selectedNotebooks.length === 1}
+                   {getNotebookName(selectedNotebooks[0])}
+                 {:else}
+                   已选{selectedNotebooks.length}个
+                 {/if}
+               </button>
+               {#if showNotebookSelector}
+                 <div class="notebook-list">
+                   {#each notebooks as notebook (notebook.id)}
+                     <label class="notebook-item">
+                       <input
+                         type="checkbox"
+                         checked={selectedNotebooks.includes(notebook.id)}
+                         on:change={() => toggleNotebook(notebook.id)}
+                       />
+                       {notebook.name}
+                     </label>
+                   {/each}
+                   <div class="confirm-button-container">
+                     <button
+                       class="b3-button b3-button--outline fn__size150"
+                       on:click={() => {
+                         showNotebookSelector = false;
+                         onNotebookChange();
+                       }}
+                     >
+                       确定
+                     </button>
+                   </div>
+                 </div>
+               {/if}
+             </div>
+           {:else if filterMode === FilterMode.Root}
+             <div class="root-doc-selector mobile-root-selector">
+               <button
+                 class="action-item b3-select fn__flex-center fn__size150"
+                 on:click={startDocumentSelection}
+               >
+                 {currentDocTitle}
+               </button>
+               
+               {#if showManualInput}
+                 <div class="manual-input-panel">
+                   <div class="input-header">
+                     <span class="input-title">输入文档ID</span>
+                     <button class="input-close" on:click={cancelManualInput}>✕</button>
+                   </div>
+                   <div class="input-content">
+                     <input
+                       class="b3-text-field manual-input"
+                       bind:value={manualInputId}
+                       placeholder="请输入文档ID..."
+                       on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                     />
+                     <div class="input-buttons">
+                       <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
+                       <button class="b3-button b3-button--outline input-btn" on:click={confirmManualInput}>确定</button>
+                     </div>
+                   </div>
+                 </div>
+               {/if}
+               
+               {#if showDocSelector}
+                 <div class="doc-tree">
+                   {#if currentLevel === "notebooks"}
+                     <div class="tree-header">
+                       <span class="tree-title">选择笔记本</span>
+                       <button class="tree-manual-btn" on:click={switchToManualInput}>
+                         输入ID
+                       </button>
+                     </div>
+                     <div class="tree-content">
+                       {#each notebooks as notebook}
+                         <div 
+                           class="tree-item notebook-item" 
+                           on:click={() => selectNotebookForDoc(notebook)}
+                         >
+                           <span class="tree-icon">📚</span>
+                           <span class="tree-label">{notebook.name}</span>
+                           <span class="tree-arrow">▶</span>
+                         </div>
+                       {/each}
+                     </div>
+                   {:else if currentLevel === "docs"}
+                     <div class="tree-header">
+                       <button class="tree-back" on:click={backToNotebookSelection}>
+                         ← 返回
+                       </button>
+                       <span class="tree-title">{selectedNotebookForDoc?.name}</span>
+                       <button class="tree-manual-btn" on:click={switchToManualInput}>
+                         输入ID
+                       </button>
+                     </div>
+                     <div class="tree-content">
+                       {#if isDocsLoading}
+                         <div class="tree-loading">加载中...</div>
+                       {:else if rootDocsList.length > 0}
+                         {#each rootDocsList as doc}
+                           <div 
+                             class="tree-item doc-item" 
+                             on:click={() => selectDocument(doc.id, doc.title)}
+                           >
+                             <span class="tree-icon">📄</span>
+                             <span class="tree-label">{doc.title}</span>
+                           </div>
+                         {/each}
+                       {:else}
+                         <div class="tree-empty">该笔记本下没有根文档</div>
+                       {/if}
+                     </div>
+                   {/if}
+                 </div>
+               {/if}
+             </div>
+           {:else if filterMode === FilterMode.Tag}
+             <div class="tag-selector mobile-tag-selector">
+               <button
+                 class="action-item b3-select fn__flex-center fn__size150"
+                 on:click={loadAvailableTags}
+               >
+                 {#if selectedTags.length === 0}
+                   请选择标签
+                 {:else if selectedTags.length === 1}
+                   {selectedTags[0]}
+                 {:else}
+                   已选{selectedTags.length}个标签
+                 {/if}
+               </button>
+               
+               {#if showTagDropdown && !isTagsLoading}
+                 <div class="tag-list">
+                   {#if availableTags.length > 0}
+                     {#each availableTags as tag}
+                       <label class="tag-item">
+                         <input
+                           type="checkbox"
+                           checked={selectedTags.includes(tag)}
+                           on:change={() => toggleTag(tag)}
+                         />
+                         #{tag}
+                       </label>
+                     {/each}
+                   {:else}
+                     <div class="tag-empty">没有找到标签</div>
+                   {/if}
+                   <div class="confirm-button-container">
+                     <button
+                       class="b3-button b3-button--outline clear-all-btn"
+                       on:click={clearAllTags}
+                     >
+                       全部取消
+                     </button>
+                     <button
+                       class="b3-button b3-button--outline confirm-btn"
+                       on:click={confirmTagSelection}
+                     >
+                       确定
+                     </button>
+                   </div>
+                 </div>
+               {/if}
+               
+               {#if isTagsLoading}
+                 <div class="tag-loading">加载中...</div>
+               {/if}
+             </div>
+           {/if}
+           {#if storeConfig?.customSqlEnabled}
+             <select
+               class="action-item b3-select fn__flex-center fn__size180 notebook-select"
+               bind:value={currentSql}
+               on:change={onSqlChange}
+             >
+               {#if sqlList && sqlList.length > 0}
+                 {#each sqlList as s (s.sql)}
+                   <option value={s.sql}>{s.name}</option>
+                 {/each}
+               {:else}
+                 <option value="">{pluginInstance.i18n.loading}...</option>
+               {/if}
+             </select>
+             <span class="custom-sql">当前使用自定义 SQL 漫游</span>
+          {/if}
+
+                 <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
+                 <button
+                   class="action-item b3-button primary-btn btn-small"
+                   on:click={doIncrementalRandomDoc}
+                   on:touchend|preventDefault={doIncrementalRandomDoc}
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   继续漫游
+                 </button>
+                 <button
+                   class="action-item b3-button primary-btn btn-small"
+                   on:click={openDocEditor}
+                   on:touchend|preventDefault={openDocEditor}
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   打开该文档
+                 </button>
+                 <button
+                   class="action-item b3-button b3-button--outline btn-small reset-button"
+                   on:click={openVisitedDocs}
+                   on:touchend|preventDefault={openVisitedDocs}
+                   title="查看已漫游文档列表"
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   已漫游文档
+                 </button>
+                 <button
+                   class="action-item b3-button b3-button--outline btn-small"
+                   on:click={openPriorityDialog}
+                   on:touchend|preventDefault={openPriorityDialog}
+                   title="优先级排序列表"
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   优先级排序表
+                 </button>
+                 <button
+                   class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+                   on:click={() => showSettingMenu(pluginInstance)}
+                   on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+                   title={pluginInstance.i18n.setting}
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   {@html icons.iconSetting}
+                 </button>
+         </div>
+       </div>
 
       <!-- 已访问文档弹窗 -->
       {#if showVisitedDialog}
@@ -1550,13 +2351,38 @@ const initEditableContent = async () => {
         </div>
       {/if}
 
-      {#if showPriorityDialog}
-        <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
-        <div class="visited-dialog">
-          <div class="visited-dialog-header">
-            <span>优先级排序列表</span>
-            <button class="close-btn" on:click={closePriorityDialog}>×</button>
-          </div>
+       {#if showMobileMetricsDialog}
+         <div class="visited-dialog-mask" on:click={closeMobileMetricsDialog}></div>
+         <div class="visited-dialog">
+           <div class="visited-dialog-header">
+             <span>文档指标</span>
+             <button class="close-btn" on:click={closeMobileMetricsDialog}>×</button>
+           </div>
+           <div class="mobile-metrics-content">
+             {#if currentRndId}
+               <MetricsPanel
+                 pluginInstance={pluginInstance}
+                 docId={currentRndId}
+                 reviewer={pr}
+                 metrics={docMetrics}
+                 {docPriority}
+                 forceExpanded={true}
+                 on:priorityChange={handleMetricsPanelPriorityChange}
+               />
+             {:else}
+               <div>请先选择一个文档</div>
+             {/if}
+           </div>
+         </div>
+       {/if}
+
+       {#if showPriorityDialog}
+         <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
+         <div class="visited-dialog">
+           <div class="visited-dialog-header">
+             <span>优先级排序列表</span>
+             <button class="close-btn" on:click={closePriorityDialog}>×</button>
+           </div>
           <div class="visited-list">
             {#if priorityLoading}
               <div>加载中...</div>
@@ -1619,27 +2445,31 @@ const initEditableContent = async () => {
         </div>
       {/if}
 
-      {#if currentRndId}
-        <MetricsPanel
-          pluginInstance={pluginInstance}
-          docId={currentRndId}
-          reviewer={pr}
-          metrics={docMetrics}
-          {docPriority}
-          on:priorityChange={handleMetricsPanelPriorityChange}
-        />
-        <!-- 优先级分布点图 -->
-        <PriorityBarChart
-          points={priorityBarPoints}
-          currentId={currentRndId}
-          minPriority={priorityBarMin}
-          maxPriority={priorityBarMax}
-          height={48}
-          on:dragging={handlePriorityBarDragging}
-          on:change={handlePriorityBarChange}
-          on:openDocument={handleOpenDocument}
-        />
-      {/if}
+       <!-- 桌面端专用：文档指标和优先级图表 -->
+       <!-- 桌面端指标和图表组件 - 移动端隐藏，避免重复显示 -->
+      <div class="desktop-metrics-section">
+         {#if currentRndId}
+           <MetricsPanel
+             pluginInstance={pluginInstance}
+             docId={currentRndId}
+             reviewer={pr}
+             metrics={docMetrics}
+             {docPriority}
+             on:priorityChange={handleMetricsPanelPriorityChange}
+           />
+           <!-- 优先级分布点图 -->
+           <PriorityBarChart
+             points={priorityBarPoints}
+             currentId={currentRndId}
+             minPriority={priorityBarMin}
+             maxPriority={priorityBarMax}
+             height={48}
+             on:dragging={handlePriorityBarDragging}
+             on:change={handlePriorityBarChange}
+             on:openDocument={handleOpenDocument}
+           />
+         {/if}
+       </div>
 
       <div class="rnd-doc-custom-tips">
         <div
@@ -1776,7 +2606,30 @@ const initEditableContent = async () => {
   .confirm-button-container
     display: flex
     justify-content: center
+    gap: 8px
     margin-top: 8px
+
+  .clear-all-btn
+    background-color: var(--b3-theme-surface) !important
+    color: var(--b3-theme-on-surface) !important
+    border-color: var(--b3-theme-surface-light) !important
+    font-size: 12px !important
+    padding: 4px 8px !important
+    min-width: 60px !important
+    
+    &:hover
+      background-color: var(--b3-theme-surface-light) !important
+      
+  .confirm-btn
+    background-color: var(--b3-theme-primary) !important
+    color: white !important
+    border-color: var(--b3-theme-primary) !important
+    font-size: 12px !important
+    padding: 4px 8px !important
+    min-width: 50px !important
+    
+    &:hover
+      background-color: var(--b3-theme-primary-light) !important
 
   .content-area
     cursor: pointer
@@ -1921,4 +2774,507 @@ const initEditableContent = async () => {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+
+   /* 默认隐藏移动端布局，显示桌面端布局 */
+   .mobile-layout {
+     display: none;
+   }
+   
+   .desktop-layout {
+     display: flex;
+     align-items: center;
+     flex-wrap: wrap;
+     gap: 5px;
+   }
+
+   /* 桌面端专用组件默认显示 */
+   .desktop-metrics-section {
+     display: block;
+   }
+
+  /* 移动端适配 - 解决移动端UI元素过大、布局混乱、按钮占用空间过多的问题 */
+  @media (max-width: 768px) {
+     .protyle-content {
+       padding: 8px !important;
+     }
+
+     .protyle-title {
+       margin: 8px 16px !important;
+     }
+
+     .protyle-wysiwyg {
+       padding: 8px 16px !important;
+     }
+
+     /* 关闭按钮样式 - 仅移动端显示 */
+     .close-button-container {
+       position: absolute;
+       top: 8px;
+       right: 8px;
+       z-index: 1000;
+       display: block !important;
+     }
+
+     .close-button {
+       background: var(--b3-theme-surface);
+       border: 1px solid var(--b3-border-color);
+       border-radius: 8px;
+       width: 40px;
+       height: 40px;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       cursor: pointer;
+       font-size: 18px;
+       color: var(--b3-theme-on-surface);
+       transition: all 0.2s ease;
+       box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+     }
+
+     .close-button:hover {
+       background: var(--b3-theme-error);
+       color: white;
+       border-color: var(--b3-theme-error);
+       transform: scale(1.05);
+     }
+
+     /* 移动端显示移动端布局，隐藏桌面端布局 */
+     .mobile-layout {
+       display: block !important;
+     }
+     
+     .desktop-layout {
+       display: none !important;
+     }
+
+    /* 移动端第一行布局 - 筛选元素独立一行，优化空间分配 */
+    .mobile-row-1 {
+       display: flex;
+       align-items: center;
+       gap: 6px;
+       margin-bottom: 8px;
+       flex-wrap: wrap;
+     }
+
+     /* 第一个筛选框固定宽度，为笔记本选择器让出空间 */
+     .mobile-row-1 .b3-select {
+       flex: 0 0 auto !important;
+       width: 70px !important;
+       height: 32px;
+       font-size: 12px;
+       min-width: 70px !important;
+       max-width: 70px !important;
+     }
+
+     .mobile-row-1 .b3-text-field {
+       flex: 1;
+       height: 32px;
+       font-size: 12px;
+       min-width: 80px;
+     }
+
+     /* 笔记本选择器 - 关键修复：覆盖SiYuan全局CSS类fn__size150的固定宽度 */
+     .mobile-row-1 .notebook-selector {
+       flex: 2 1 auto !important;
+       min-width: 120px !important;
+       max-width: none !important;
+       width: auto !important;
+     }
+
+     /* 强制覆盖SiYuan的fn__size150类（150px固定宽度），确保笔记本选择器能正确伸缩 */
+     .mobile-row-1 .notebook-selector .action-item,
+     .mobile-row-1 .notebook-selector .fn__size150 {
+       height: 32px !important;
+       font-size: 12px !important;
+       width: 100% !important;
+       min-width: 0 !important;
+       max-width: none !important;
+       flex: 1 !important;
+       padding: 4px 8px !important;
+       text-overflow: ellipsis !important;
+       overflow: hidden !important;
+       white-space: nowrap !important;
+     }
+
+    /* 标签选择器 - 关键修复：覆盖SiYuan全局CSS类fn__size150的固定宽度 */
+    .mobile-row-1 .tag-selector {
+      flex: 2 1 auto !important;
+      min-width: 120px !important;
+      max-width: none !important;
+      width: auto !important;
+    }
+
+    /* 强制覆盖SiYuan的fn__size150类（150px固定宽度），确保标签选择器能正确伸缩 */
+    .mobile-row-1 .tag-selector .action-item,
+    .mobile-row-1 .tag-selector .fn__size150 {
+      height: 32px !important;
+      font-size: 12px !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: 1 !important;
+      padding: 4px 8px !important;
+      text-overflow: ellipsis !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+    }
+
+    /* 根文档选择器 - 关键修复：覆盖SiYuan全局CSS类fn__size150的固定宽度 */
+    .mobile-row-1 .root-doc-selector {
+      flex: 2 1 auto !important;
+      min-width: 120px !important;
+      max-width: none !important;
+      width: auto !important;
+    }
+
+    /* 强制覆盖SiYuan的fn__size150类（150px固定宽度），确保根文档选择器能正确伸缩 */
+    .mobile-row-1 .root-doc-selector .action-item,
+    .mobile-row-1 .root-doc-selector .fn__size150 {
+      height: 32px !important;
+      font-size: 12px !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: 1 !important;
+      padding: 4px 8px !important;
+      text-overflow: ellipsis !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+    }
+
+     .mobile-row-1 .custom-sql {
+       font-size: 10px;
+       white-space: nowrap;
+       flex: 0 0 auto;
+     }
+
+     /* 继续漫游按钮独立一行 - 按用户要求占满整行，提升点击体验 */
+     .mobile-continue-row {
+       display: flex;
+       margin-bottom: 8px;
+     }
+
+     .mobile-continue-row .continue-btn {
+       width: 100%;
+       height: 36px;
+       font-size: 14px;
+       padding: 8px;
+     }
+
+     /* 移动端第二行布局 */
+     .mobile-row-2 {
+       display: flex;
+       gap: 4px;
+       align-items: center;
+     }
+
+     .mobile-row-2 button,
+     .mobile-row-2 .mobile-metrics-toggle {
+       flex: 1;
+       height: 32px;
+       font-size: 11px;
+       padding: 4px 2px;
+       min-width: 0;
+       text-align: center;
+     }
+
+     .mobile-row-2 .mobile-metrics-toggle button {
+       width: 100%;
+       height: 100%;
+       font-size: 11px;
+       padding: 4px 2px;
+     }
+
+
+     /* 隐藏移动端的剩余文档数量提示信息 */
+     .rnd-doc-custom-tips {
+       display: none !important;
+     }
+
+     /* 隐藏移动端的桌面端专用组件 */
+     .desktop-metrics-section {
+       display: none !important;
+     }
+
+     .visited-dialog {
+       width: 95% !important;
+       max-width: none !important;
+       margin: 20px auto;
+     }
+   }
+
+ @media (max-width: 480px) {
+    .protyle-title .protyle-title__input {
+      font-size: 18px !important;
+    }
+
+    .action-btn-group {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .action-item {
+      width: 100%;
+      margin: 2px 0;
+    }
+
+    .filter-label {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .b3-select {
+      width: 100%;
+    }
+  }
+
+  /* 标签选择器样式 - 完全参照笔记本选择器 */
+  .tag-selector {
+    position: relative;
+    display: inline-block;
+  }
+    
+  .tag-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    width: 200px;
+  }
+    
+  .tag-item {
+    display: block;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 13px;
+    border-radius: 4px;
+    color: var(--b3-theme-primary);
+    
+    &:hover {
+      background-color: var(--b3-list-hover);
+    }
+      
+    input {
+      margin-right: 8px;
+    }
+  }
+
+  .tag-empty {
+    padding: 8px 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .tag-loading {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 101;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+  }
+
+  /* 根文档选择器样式 - 树形结构 */
+  .root-doc-selector {
+    position: relative;
+    display: inline-block;
+  }
+    
+  .doc-tree {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-height: 400px;
+    width: 350px;
+    overflow: hidden;
+  }
+
+  .tree-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+    font-weight: 500;
+    font-size: 13px;
+    gap: 8px;
+  }
+
+  .tree-back {
+    background: none;
+    border: none;
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    
+    &:hover {
+      background-color: var(--b3-theme-primary-lighter);
+    }
+  }
+
+  .tree-title {
+    color: var(--b3-theme-on-surface);
+    flex: 1;
+  }
+
+  .tree-content {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+    
+  .tree-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    gap: 8px;
+    
+    &:hover {
+      background-color: var(--b3-list-hover);
+    }
+  }
+
+  .tree-icon {
+    font-size: 14px;
+    width: 16px;
+    text-align: center;
+  }
+
+  .tree-label {
+    flex: 1;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+  }
+
+  .tree-arrow {
+    font-size: 10px;
+    color: var(--b3-theme-on-surface-light);
+  }
+
+  .tree-empty {
+    padding: 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .tree-loading {
+    padding: 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface);
+    font-size: 13px;
+  }
+
+  .tree-manual-btn {
+    background: none;
+    border: none;
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    
+    &:hover {
+      background-color: var(--b3-theme-primary-lighter);
+    }
+  }
+
+  /* 手动输入面板样式 */
+  .manual-input-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    width: 350px;
+    overflow: hidden;
+  }
+
+  .input-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .input-title {
+    color: var(--b3-theme-on-surface);
+  }
+
+  .input-close {
+    background: none;
+    border: none;
+    color: var(--b3-theme-on-surface-light);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    
+    &:hover {
+      background-color: var(--b3-list-hover);
+    }
+  }
+
+  .input-content {
+    padding: 12px;
+  }
+
+  .manual-input {
+    width: 100%;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .input-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .input-btn {
+    font-size: 12px;
+    padding: 4px 12px;
+    height: auto;
+  }
+
+  /* 默认隐藏关闭按钮 - 只在移动端显示 */
+  .close-button-container {
+    display: none;
+  }
+
 </style>

@@ -183,6 +183,101 @@ class KernelApi extends BaseApi {
       throw error
     }
   }
+
+  /**
+   * 获取指定笔记本下的文档树
+   * @param notebookId 笔记本ID，如果为空则获取所有笔记本
+   * @param path 路径，用于获取子目录
+   * @returns 文档树结构
+   */
+  public async getFileTree(notebookId?: string, path?: string): Promise<SiyuanData> {
+    try {
+      const params: any = {}
+      if (notebookId) {
+        params.notebook = notebookId
+      }
+      if (path) {
+        params.path = path
+      }
+      return await this.siyuanRequest("/api/filetree/listDocsByPath", params)
+    } catch (error) {
+      this.logger.error("获取文件树失败:", error)
+      throw error
+    }
+  }
+
+  /**
+   * 获取笔记本下的根文档列表
+   * @param notebookId 笔记本ID  
+   * @returns 根文档列表
+   */
+  public async getRootDocs(notebookId: string): Promise<SiyuanData> {
+    try {
+      // 先测试简单查询，看看该笔记本下有多少文档
+      const testStmt = `
+        SELECT id, content as title, path 
+        FROM blocks 
+        WHERE type = 'd' 
+        AND box = '${notebookId}'
+        ORDER BY updated DESC
+        LIMIT 1
+        
+      `
+      this.logger.info(`测试查询笔记本 ${notebookId} 下的文档:`, testStmt)
+      const testResult = await this.sql(testStmt)
+      this.logger.info(`测试结果:`, testResult)
+      
+      // 如果测试查询有结果，再尝试根文档查询
+      if (testResult.data && testResult.data.length > 0) {
+        // 修改根文档查询逻辑 - 查找路径层级较浅的文档
+        const stmt = `
+          SELECT id, content as title, path 
+          FROM blocks 
+          WHERE type = 'd' 
+          AND box = '${notebookId}'
+          AND content IS NOT NULL 
+          AND content != ''
+          ORDER BY length(path), updated DESC
+          LIMIT 200
+        `
+        this.logger.info(`根文档查询:`, stmt)
+        return await this.sql(stmt)
+      } else {
+        this.logger.warn(`笔记本 ${notebookId} 下没有找到任何文档`)
+        return { code: 0, msg: "", data: [] }
+      }
+    } catch (error) {
+      this.logger.error("获取根文档列表失败:", error)
+      throw error
+    }
+  }
+
+  /**
+   * 根据文档ID获取文档标题
+   * @param docId 文档ID
+   * @returns 文档标题
+   */
+  public async getDocTitleById(docId: string): Promise<string> {
+    try {
+      const stmt = `
+        SELECT content as title 
+        FROM blocks 
+        WHERE type = 'd' 
+        AND id = '${docId}'
+        LIMIT 1
+      `
+      const result = await this.sql(stmt)
+      
+      if (result.code !== 0 || !result.data || result.data?.length === 0) {
+        return "(未找到文档)"
+      }
+
+      return result.data[0].title || "(无标题)"
+    } catch (error) {
+      this.logger.error("获取文档标题失败:", error)
+      return "(获取失败)"
+    }
+  }
 }
 
 export default KernelApi

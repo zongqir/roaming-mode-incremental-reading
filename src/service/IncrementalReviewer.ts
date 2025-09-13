@@ -57,6 +57,10 @@ class IncrementalReviewer {
   private pluginInstance: RandomDocPlugin
   /** 1.3 渐进式阅读配置 */
   private incrementalConfig: IncrementalConfig
+  
+  /** 1.4 文档总数缓存 - 按笔记本ID缓存，避免重复统计查询 */
+  private static docCountCache = new Map<string, {count: number, timestamp: number}>()
+  private static readonly CACHE_DURATION = 10 * 60 * 1000 // 10分钟缓存
 
   /**
    * 1.4 构造函数
@@ -181,7 +185,9 @@ class IncrementalReviewer {
       }
 
       // 3.1.5 使用分页查询获取所有文档
-      const pageSize = 50 // 每页获取50个文档
+      const pageSize = 3000 // 每页获取3000个文档，本地SQLite性能优秀
+      const expectedPages = Math.ceil(totalDocCount / pageSize)
+      this.pluginInstance.logger.info(`开始分页获取 ${totalDocCount} 个文档，每页 ${pageSize} 个，预计需要 ${expectedPages} 次SQL查询`)
       let allDocs = []
       
       for (let offset = 0; offset < totalDocCount; offset += pageSize) {
@@ -224,46 +230,56 @@ class IncrementalReviewer {
         throw new Error(errorMsg)
       }
       
-      this.pluginInstance.logger.info(`最终获取到 ${allDocs.length}/${totalDocCount} 个文档`)
+      this.pluginInstance.logger.info(`最终获取到 ${allDocs.length}/${totalDocCount} 个文档，实际执行了 ${Math.ceil(allDocs.length / pageSize)} 次分页查询`)
+      this.pluginInstance.logger.info(`SQL查询优化效果：从预期的20次减少到 ${Math.ceil(allDocs.length / pageSize)} 次`)
       
       // 3.1.7 记录获取文档数量（仅日志，不显示弹窗）
       this.pluginInstance.logger.info(`已获取 ${allDocs.length} 个文档用于计算漫游概率`)
 
-      // 3.1.8 获取所有文档的优先级数据
-      this.pluginInstance.logger.info("开始获取所有文档的优先级数据...")
+      // 3.1.8 批量获取所有文档的优先级数据 - 性能优化版本
+      this.pluginInstance.logger.info("开始批量获取所有文档的优先级数据...")
       
-      // 3.1.9 批量处理文档优先级计算
+      // 3.1.8.1 提取所有文档ID
+      const allDocIds = allDocs.map(doc => doc.id)
+      
+      // 3.1.8.2 批量获取所有文档的属性数据（一次SQL查询替代N次API调用）
+      const batchStartTime = Date.now()
+      const allDocAttributes = await this.getBatchDocAttributes(allDocIds)
+      const batchEndTime = Date.now()
+      this.pluginInstance.logger.info(`批量属性查询耗时: ${batchEndTime - batchStartTime}ms，平均每个文档: ${((batchEndTime - batchStartTime) / allDocIds.length).toFixed(2)}ms`)
+      
+      // 3.1.8.3 在内存中处理所有文档的优先级计算
+      this.pluginInstance.logger.info(`开始计算 ${allDocs.length} 个文档的优先级...`)
+      const priorityStartTime = Date.now()
       const docPriorityList: { docId: string, priority: number }[] = []
-      const batchSize = 20
       
-      for (let i = 0; i < allDocs.length; i += batchSize) {
-        const batchDocs = allDocs.slice(i, i + batchSize)
-        this.pluginInstance.logger.info(`处理第 ${Math.floor(i/batchSize) + 1}/${Math.ceil(allDocs.length/batchSize)} 批文档，共 ${batchDocs.length} 个`)
+      for (let i = 0; i < allDocs.length; i++) {
+        const doc = allDocs[i]
+        try {
+          // 从批量获取的属性数据中解析文档数据
+          const docAttributes = allDocAttributes[doc.id] || {}
+          const docData = this.parseDocPriorityFromAttrs(doc.id, docAttributes)
+          
+          // 计算优先级
+          const priorityResult = await this.calculatePriority(docData)
+          docPriorityList.push({ docId: doc.id, priority: priorityResult.priority })
+          
+        } catch (err) {
+          this.pluginInstance.logger.error(`计算文档 ${doc.id} 优先级失败`, err);
+          // 返回默认优先级，避免因单个文档失败而中断整个流程
+          docPriorityList.push({ docId: doc.id, priority: 5.0 });
+        }
         
-        // 3.1.9.1 并行处理一批文档
-        const batchResults = await Promise.all(
-          batchDocs.map(async (doc) => {
-            try {
-              const docData = await this.getDocPriorityData(doc.id)
-              const priorityResult = await this.calculatePriority(docData)
-              return { docId: doc.id, priority: priorityResult.priority }
-            } catch (err) {
-              this.pluginInstance.logger.error(`获取文档 ${doc.id} 优先级数据失败`, err);
-              // 返回默认优先级，避免因单个文档失败而中断整个流程
-              return { docId: doc.id, priority: 5.0 };
-            }
-          })
-        )
-        
-        docPriorityList.push(...batchResults)
-        
-        // 3.1.9.2 更新进度提示 - 只在处理大量文档时显示进度，且降低显示频率
-        if (allDocs.length > 100 && i % (batchSize * 5) === 0) {
-          showMessage(`正在计算文档优先级 ${docPriorityList.length}/${allDocs.length}`, 1000, "info")
+        // 显示进度（每处理100个文档显示一次）
+        if (allDocs.length > 200 && (i + 1) % 100 === 0) {
+          this.pluginInstance.logger.info(`已处理 ${i + 1}/${allDocs.length} 个文档的优先级计算`)
         }
       }
       
-      this.pluginInstance.logger.info(`已计算 ${docPriorityList.length} 个文档的优先级数据`)
+      const priorityEndTime = Date.now()
+      this.pluginInstance.logger.info(`成功计算 ${docPriorityList.length} 个文档的优先级数据`)
+      this.pluginInstance.logger.info(`优先级计算耗时: ${priorityEndTime - priorityStartTime}ms，平均每个文档: ${((priorityEndTime - priorityStartTime) / allDocs.length).toFixed(2)}ms`)
+      this.pluginInstance.logger.info(`总优化效果: 批量查询(${batchEndTime - batchStartTime}ms) + 计算(${priorityEndTime - priorityStartTime}ms) = ${(batchEndTime - batchStartTime) + (priorityEndTime - priorityStartTime)}ms`)
       
       // 3.1.10 记录前几个文档的优先级情况（调试用）
       const top5Docs = docPriorityList.slice(0, 5).map(doc => `${doc.docId}: ${doc.priority.toFixed(2)}`);
@@ -342,26 +358,52 @@ class IncrementalReviewer {
    * @returns 文档总数
    */
   public async getTotalDocCount(config?: RandomDocConfig): Promise<number> {
+    console.log("📊 getTotalDocCount 被调用")
     try {
       // 3.2.1 使用传入的配置或当前最新配置
-      const filterCondition = this.buildFilterCondition(config || this.storeConfig)
+      const targetConfig = config || this.storeConfig
+      console.log("🎯 使用的配置:", targetConfig)
+      console.log("🏷️ 配置中的标签:", targetConfig.tags)
+      console.log("📋 配置中的筛选模式:", targetConfig.filterMode)
       
-      // 3.2.2 构造计数SQL查询
+      // 3.2.2 生成缓存键并尝试从缓存获取
+      const cacheKey = this.generateCacheKey(targetConfig)
+      console.log("🔑 生成的缓存键:", cacheKey)
+      const cachedCount = this.getFromCache(cacheKey)
+      
+      if (cachedCount !== null) {
+        console.log("🎯 命中缓存，返回:", cachedCount)
+        // 命中缓存，直接返回
+        return cachedCount
+      }
+      
+      console.log("❌ 缓存未命中，开始构建SQL")
+      // 3.2.3 缓存未命中，执行SQL查询
+      const filterCondition = this.buildFilterCondition(targetConfig)
+      console.log("🔍 构建的筛选条件:", filterCondition)
       const sql = `
         SELECT COUNT(id) as total FROM blocks 
         WHERE type = 'd' 
         ${filterCondition}
       `
+      console.log("📝 最终SQL查询:", sql)
       
-      // 3.2.3 执行查询
+      this.pluginInstance.logger.info(`缓存未命中，执行SQL查询: ${cacheKey}`)
+      
+      // 3.2.4 执行查询
       const result = await this.pluginInstance.kernelApi.sql(sql)
       if (result.code !== 0) {
         this.pluginInstance.logger.error(`获取文档总数时出错，错误码: ${result.code}, 错误信息: ${result.msg}`)
         throw new Error(`获取文档总数时出错: ${result.msg}`)
       }
       
-      // 3.2.4 返回结果
-      return result.data?.[0]?.total || 0
+      const count = result.data?.[0]?.total || 0
+      
+      // 3.2.5 设置缓存
+      this.setCache(cacheKey, count)
+      
+      this.pluginInstance.logger.info(`获取到文档总数: ${count}，已缓存`)
+      return count
     } catch (error) {
       this.pluginInstance.logger.error("获取文档总数时出错:", error)
       throw error
@@ -384,7 +426,7 @@ class IncrementalReviewer {
       }
       
       // 使用分页查询获取所有文档
-      const pageSize = 50 // 每页获取50个文档
+      const pageSize = 3000 // 每页获取3000个文档，本地SQLite性能优秀
       let allDocs = []
       
       for (let offset = 0; offset < totalCount; offset += pageSize) {
@@ -413,52 +455,65 @@ class IncrementalReviewer {
         allDocs = allDocs.concat(pageDocs)
       }
       
-      // 批量获取文档的优先级
-      const priorityList: Array<{id: string; title?: string; priority: number}> = []
-      const batchSize = 20
+      // 批量获取文档的优先级 - 性能优化版本
+      this.pluginInstance.logger.info(`开始批量计算 ${allDocs.length} 个文档的优先级列表...`)
       
-      for (let i = 0; i < allDocs.length; i += batchSize) {
-        const batchDocs = allDocs.slice(i, i + batchSize)
-        
-        // 并行处理一批文档
-        const batchResults = await Promise.all(
-          batchDocs.map(async (doc) => {
-            try {
-              const docData = await this.getDocPriorityData(doc.id)
-              const priorityResult = await this.calculatePriority(docData)
-              // 提取文档标题
-              let title = doc.content
-              if (title && title.length > 0) {
-                // 从content中提取标题，通常是第一行的markdown标题
-                const titleMatch = title.match(/^#+\s+(.+)$/m)
-                if (titleMatch && titleMatch[1]) {
-                  title = titleMatch[1].trim()
-                } else {
-                  // 或者使用内容的前30个字符
-                  title = title.substring(0, 30) + (title.length > 30 ? '...' : '')
-                }
-              } else {
-                title = '未命名文档'
-              }
-              
-              return { 
-                id: doc.id, 
-                title, 
-                priority: priorityResult.priority 
-              }
-            } catch (err) {
-              this.pluginInstance.logger.warn(`获取文档 ${doc.id} 优先级失败:`, err)
-              return { 
-                id: doc.id, 
-                title: '未知文档', 
-                priority: 5.0 // 默认优先级 
-              }
+      // 提取所有文档ID
+      const allDocIds = allDocs.map(doc => doc.id)
+      
+      // 批量获取所有文档的属性数据（一次SQL查询替代N次API调用）
+      const allDocAttributes = await this.getBatchDocAttributes(allDocIds)
+      
+      // 在内存中处理所有文档的优先级计算
+      const priorityList: Array<{id: string; title?: string; priority: number}> = []
+      
+      for (let i = 0; i < allDocs.length; i++) {
+        const doc = allDocs[i]
+        try {
+          // 从批量获取的属性数据中解析文档数据
+          const docAttributes = allDocAttributes[doc.id] || {}
+          const docData = this.parseDocPriorityFromAttrs(doc.id, docAttributes)
+          
+          // 计算优先级
+          const priorityResult = await this.calculatePriority(docData)
+          
+          // 提取文档标题
+          let title = doc.content
+          if (title && title.length > 0) {
+            // 从content中提取标题，通常是第一行的markdown标题
+            const titleMatch = title.match(/^#+\s+(.+)$/m)
+            if (titleMatch && titleMatch[1]) {
+              title = titleMatch[1].trim()
+            } else {
+              // 或者使用内容的前30个字符
+              title = title.substring(0, 30) + (title.length > 30 ? '...' : '')
             }
+          } else {
+            title = '未命名文档'
+          }
+          
+          priorityList.push({ 
+            id: doc.id, 
+            title, 
+            priority: priorityResult.priority 
           })
-        )
+          
+        } catch (err) {
+          this.pluginInstance.logger.warn(`计算文档 ${doc.id} 优先级失败:`, err)
+          priorityList.push({ 
+            id: doc.id, 
+            title: '未知文档', 
+            priority: 5.0 // 默认优先级 
+          })
+        }
         
-        priorityList.push(...batchResults)
+        // 显示进度（每处理50个文档显示一次）
+        if (allDocs.length > 100 && (i + 1) % 50 === 0) {
+          this.pluginInstance.logger.info(`优先级列表计算进度: ${i + 1}/${allDocs.length}`)
+        }
       }
+      
+      this.pluginInstance.logger.info(`成功计算 ${priorityList.length} 个文档的优先级列表`)
       
       // 按优先级排序（从高到低）
       priorityList.sort((a, b) => b.priority - a.priority)
@@ -518,7 +573,104 @@ class IncrementalReviewer {
    */
 
   /**
-   * 4.1 获取文档的优先级数据
+   * 4.0 批量获取多个文档的属性数据 - 性能优化：一次SQL查询替代N次API调用
+   * @param docIds 文档ID数组
+   * @returns 文档ID到属性映射的对象
+   */
+  public async getBatchDocAttributes(docIds: string[]): Promise<{[docId: string]: {[key: string]: string}}> {
+    try {
+      if (docIds.length === 0) return {}
+      
+      // 构建IN查询条件
+      const docIdList = docIds.map(id => `'${id}'`).join(',')
+      
+      // 批量查询所有文档的custom-metric属性
+      const sql = `
+        SELECT block_id, name, value 
+        FROM attributes 
+        WHERE block_id IN (${docIdList}) 
+          AND name LIKE 'custom-metric-%'
+        ORDER BY block_id, name
+      `
+      
+      this.pluginInstance.logger.info(`批量查询${docIds.length}个文档的属性数据...`)
+      const result = await this.pluginInstance.kernelApi.sql(sql)
+      
+      if (result.code !== 0) {
+        this.pluginInstance.logger.error(`批量查询属性失败: ${result.msg}`)
+        throw new Error(`批量查询属性失败: ${result.msg}`)
+      }
+      
+      // 将结果组织为 {docId: {attrName: attrValue}} 的格式
+      const attributesMap: {[docId: string]: {[key: string]: string}} = {}
+      
+      if (result.data && Array.isArray(result.data)) {
+        for (const row of result.data) {
+          const docId = row.block_id
+          const attrName = row.name
+          const attrValue = row.value
+          
+          if (!attributesMap[docId]) {
+            attributesMap[docId] = {}
+          }
+          attributesMap[docId][attrName] = attrValue
+        }
+      }
+      
+      this.pluginInstance.logger.info(`成功获取${Object.keys(attributesMap).length}个文档的属性数据`)
+      return attributesMap
+      
+    } catch (error) {
+      this.pluginInstance.logger.error('批量获取文档属性失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 4.1 从属性数据解析文档优先级数据 - 纯内存操作，配合批量查询使用
+   * @param docId 文档ID
+   * @param attributes 文档属性映射
+   * @returns 文档优先级数据对象
+   */
+  public parseDocPriorityFromAttrs(docId: string, attributes: {[key: string]: string}): DocPriorityData {
+    const docData: DocPriorityData = {
+      docId,
+      metrics: {}
+    }
+    
+    // 跟踪需要更新的指标（批量模式下暂不自动修复，避免大量写操作）
+    const metricsToUpdate: { [key: string]: string } = {}
+    let hasInvalidMetrics = false
+    
+    // 获取每个指标的值并检查修复
+    for (const metric of this.incrementalConfig.metrics) {
+      const attrKey = `custom-metric-${metric.id}`
+      const rawValue = attributes[attrKey]
+      let metricValue: number
+      
+      // 检查指标是否为空或0，设置默认值
+      if (!rawValue || rawValue === '' || parseFloat(rawValue) === 0) {
+        metricValue = 5.0
+        metricsToUpdate[attrKey] = metricValue.toFixed(4)
+        hasInvalidMetrics = true
+        this.pluginInstance.logger.debug(`文档 ${docId} 的指标 ${metric.id} 为空或0，将使用默认值5.0`)
+      } else {
+        metricValue = parseFloat(rawValue)
+      }
+      
+      docData.metrics[metric.id] = metricValue
+    }
+    
+    // 如果有无效指标，记录但不立即修复（避免批量写操作影响性能）
+    if (hasInvalidMetrics) {
+      this.pluginInstance.logger.debug(`文档 ${docId} 存在无效指标，建议后续修复`)
+    }
+    
+    return docData
+  }
+
+  /**
+   * 4.2 获取文档的优先级数据（单个文档版本，保持向下兼容）
    * 读取文档属性中存储的指标值，并自动修复空值或无效值
    * 
    * @param docId 文档ID
@@ -857,6 +1009,67 @@ class IncrementalReviewer {
     } catch (error) {
       this.pluginInstance.logger.error(`更新文档 ${docId} 的优先级失败`, error)
       throw error
+    }
+  }
+
+  /**
+   * 4.5 获取所有可用标签
+   * 从数据库中获取所有存在的标签，用于下拉选择
+   */
+  public async getAllAvailableTags(): Promise<string[]> {
+    try {
+      const sql = `SELECT tag FROM blocks WHERE tag IS NOT NULL AND tag != "" GROUP BY tag ORDER BY tag`
+      const result = await this.pluginInstance.kernelApi.sql(sql)
+      
+      // 检查返回结果格式
+      if (result.code !== 0) {
+        this.pluginInstance.logger.error(`SQL执行失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        return []
+      }
+      
+      const actualData = result.data || []
+      
+      if (actualData && actualData.length > 0) {
+        // 处理标签数据，包括复合标签（如 "#展开# #练习#"）
+        const allTags = new Set<string>()
+        
+        actualData.forEach((row) => {
+          const tagValue = row.tag
+          if (tagValue) {
+            // 拆分复合标签（多个标签用空格分隔）
+            const individualTags = tagValue.split(/\s+/).filter(t => t.trim().length > 0)
+            
+            individualTags.forEach(tag => {
+              // 去除 # 前后缀，返回纯标签名
+              let cleanTag = tag.trim()
+              
+              if (cleanTag.startsWith('#')) {
+                cleanTag = cleanTag.substring(1)
+              }
+              if (cleanTag.endsWith('#')) {
+                cleanTag = cleanTag.substring(0, cleanTag.length - 1)
+              }
+              
+              if (cleanTag.length > 0) {
+                allTags.add(cleanTag)
+              }
+            })
+          }
+        })
+        
+        const tags = Array.from(allTags).sort()
+        this.pluginInstance.logger.info(`获取到 ${tags.length} 个可用标签`)
+        return tags
+      } else {
+        return []
+      }
+      
+    } catch (error) {
+      console.error("❌ getAllAvailableTags 发生错误:", error)
+      console.error("❌ 错误详情:", error.message)
+      console.error("❌ 错误堆栈:", error.stack)
+      this.pluginInstance.logger.error("获取可用标签失败", error)
+      return []
     }
   }
 
@@ -1223,6 +1436,81 @@ class IncrementalReviewer {
    */
   
   /**
+   * 7.0 文档总数缓存管理
+   */
+  
+  /**
+   * 7.0.1 生成缓存键 - 基于过滤条件生成唯一标识
+   * @param config 配置对象
+   * @returns 缓存键字符串
+   */
+  private generateCacheKey(config: RandomDocConfig): string {
+    const filterMode = config.filterMode || FilterMode.Notebook
+    const notebookId = config.notebookId || ""
+    const rootId = config.rootId || ""
+    const tags = config.tags || []
+    
+    // 为每种模式生成唯一的缓存键，即使参数为空也要区分模式
+    if (filterMode === FilterMode.Notebook) {
+      return `notebook:${notebookId}`
+    } else if (filterMode === FilterMode.Root) {
+      return `root:${rootId}`
+    } else if (filterMode === FilterMode.Tag) {
+      if (Array.isArray(tags) && tags.length > 0) {
+        // 对标签进行排序以确保缓存键一致性
+        const sortedTags = tags.filter(tag => tag && tag.trim().length > 0).sort().join(',')
+        return `tag:${sortedTags}`
+      } else {
+        return `tag:empty` // 标签模式但无标签内容
+      }
+    }
+    
+    return "all" // 默认所有文档
+  }
+  
+  /**
+   * 7.0.2 从缓存获取文档总数
+   * @param cacheKey 缓存键
+   * @returns 缓存的文档总数，如果缓存过期或不存在则返回null
+   */
+  private getFromCache(cacheKey: string): number | null {
+    const cached = IncrementalReviewer.docCountCache.get(cacheKey)
+    if (!cached) return null
+    
+    const now = Date.now()
+    if (now - cached.timestamp > IncrementalReviewer.CACHE_DURATION) {
+      // 缓存过期，清除
+      IncrementalReviewer.docCountCache.delete(cacheKey)
+      this.pluginInstance.logger.info(`缓存已过期并清除: ${cacheKey}`)
+      return null
+    }
+    
+    this.pluginInstance.logger.info(`命中缓存: ${cacheKey}, 文档总数: ${cached.count}`)
+    return cached.count
+  }
+  
+  /**
+   * 7.0.3 设置缓存
+   * @param cacheKey 缓存键
+   * @param count 文档总数
+   */
+  private setCache(cacheKey: string, count: number): void {
+    IncrementalReviewer.docCountCache.set(cacheKey, {
+      count,
+      timestamp: Date.now()
+    })
+    this.pluginInstance.logger.info(`设置缓存: ${cacheKey}, 文档总数: ${count}`)
+  }
+  
+  /**
+   * 7.0.4 清理所有缓存 - 应用关闭时调用
+   */
+  public static clearAllCache(): void {
+    IncrementalReviewer.docCountCache.clear()
+    console.log("文档总数缓存已清空")
+  }
+
+  /**
    * 7.1 构建过滤条件
    * 
    * @param config 可选的配置对象
@@ -1232,23 +1520,92 @@ class IncrementalReviewer {
     // 7.1.1 使用传入的配置或当前实例的最新配置
     const targetConfig = config || this.storeConfig
     
-    // 7.1.2 从配置中获取过滤模式和相关ID
+    // 7.1.2 从配置中获取过滤模式和相关参数
     const filterMode = targetConfig.filterMode || FilterMode.Notebook
     const notebookId = targetConfig.notebookId || ""
     const rootId = targetConfig.rootId || ""
+    const tags = targetConfig.tags || []
+    
+    // 详细日志：记录当前使用的配置
+    this.pluginInstance.logger.info("🏗️ buildFilterCondition 使用的配置:", {
+      "是否传入config": !!config,
+      "最终使用的filterMode": filterMode,
+      "最终使用的notebookId": notebookId,
+      "最终使用的rootId": rootId,
+      "最终使用的tags": tags,
+      "实例this.storeConfig": {
+        "filterMode": this.storeConfig.filterMode,
+        "notebookId": this.storeConfig.notebookId,
+        "rootId": this.storeConfig.rootId,
+        "tags": this.storeConfig.tags
+      }
+    })
 
     let condition = ""
-    if (filterMode === FilterMode.Notebook && notebookId) {
-      // 处理多个笔记本ID的情况
-      const notebookIds = notebookId.split(',')
-      if (notebookIds.length > 0) {
-        const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
-        condition = `AND box IN (${quotedIds})`
-        this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+    
+    // 根据筛选模式严格匹配，防止模式切换时的交叉干扰
+    if (filterMode === FilterMode.Notebook) {
+      // 笔记本模式 - 仅当有笔记本ID时应用过滤
+      if (notebookId) {
+        const notebookIds = notebookId.split(',')
+        if (notebookIds.length > 0) {
+          const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
+          condition = `AND box IN (${quotedIds})`
+          this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+        }
+      } else {
+        this.pluginInstance.logger.info(`笔记本模式但无笔记本ID，不应用过滤条件`)
       }
-    } else if (filterMode === FilterMode.Root && rootId) {
-      this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
-      condition = `AND path LIKE '%${rootId}%'`
+    } else if (filterMode === FilterMode.Root) {
+      // 根文档模式 - 仅当有根文档ID时应用过滤
+      if (rootId) {
+        condition = `AND path LIKE '%${rootId}%'`
+        this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
+      } else {
+        this.pluginInstance.logger.info(`根文档模式但无根文档ID，不应用过滤条件`)
+      }
+    } else if (filterMode === FilterMode.Tag) {
+      console.log("🏷️ 进入标签过滤模式")
+      console.log("📋 传入的tags参数:", tags)
+      console.log("🔍 tags类型:", typeof tags)
+      console.log("📊 Array.isArray(tags):", Array.isArray(tags))
+      
+      // 标签模式 - 仅当有标签时应用过滤
+      if (tags && Array.isArray(tags) && tags.length > 0) {
+        console.log("✅ 标签数组非空，开始处理")
+        // 直接使用数组，不需要split操作
+        const tagList = tags.filter(tag => tag && tag.trim().length > 0)
+        console.log("🧹 过滤后的标签列表:", tagList)
+        
+        if (tagList.length > 0) {
+          console.log("🔨 开始构建标签条件")
+          // 找到包含指定标签的文档（通过root_id关联）
+          // 标签格式：#标签名#
+          const tagConditions = tagList.map(tag => {
+            // 确保标签格式为 #标签名#
+            let formattedTag = tag.trim()
+            if (!formattedTag.startsWith('#')) {
+              formattedTag = '#' + formattedTag
+            }
+            if (!formattedTag.endsWith('#')) {
+              formattedTag = formattedTag + '#'
+            }
+            const sqlCondition = `id IN (SELECT DISTINCT root_id FROM blocks WHERE tag = '${formattedTag}' AND root_id IS NOT NULL AND root_id != '')`
+            console.log(`🎯 标签 "${tag}" → 格式化为 "${formattedTag}" → SQL: ${sqlCondition}`)
+            return sqlCondition
+          })
+          condition = `AND (${tagConditions.join(' OR ')})`
+          console.log("🏗️ 最终标签筛选条件:", condition)
+          this.pluginInstance.logger.info(`应用标签过滤(OR逻辑)，查找包含任一标签的文档，标签列表: ${tagList.join(', ')}`)
+        } else {
+          console.log("⚠️ 标签模式但过滤后标签列表为空")
+          this.pluginInstance.logger.info(`标签模式但标签列表为空，显示所有文档`)
+        }
+      } else {
+        console.log("❌ 标签模式但无有效标签内容")
+        console.log("📋 tags:", tags)
+        this.pluginInstance.logger.info(`标签模式但无标签内容，显示所有文档`)
+      }
     }
     
     return condition

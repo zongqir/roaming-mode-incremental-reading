@@ -165,7 +165,7 @@
         <h2 style="color: #dc2626; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🫧 支持作者</h2>
         <p style="margin: 0.5em 0;">如果漫游式渐进阅读对您的学习有所帮助，欢迎给作者点个赞或打赏一杯咖啡，这将鼓励作者持续优化和开发更多实用功能：</p>
         <div style="margin: 1em 0; text-align: center;">
-            <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
+            <img src="https://i0.hdslb.com/bfs/openplatform/12bb6dd415d52c76318b4fb391f179e69d263a54.png@1e_1c.webp"
                  alt="桌面端打赏二维码"
                  style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <p style="margin: 0.5em 0; color: #666;">桌面端 - 微信/支付宝</p>

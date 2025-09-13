@@ -38,6 +38,7 @@
   import type { DocPriorityData } from "../models/IncrementalConfig"
   import type { DocBasicInfo } from "../models/IncrementalConfig"
   import type { Metric } from "../models/IncrementalConfig"
+  import { isLocked, toggleLock } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -67,6 +68,7 @@
   let manualInputId = "" // 手动输入的ID
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
+  
   let currentRndId
   let unReviewedCount = 0
   let content = ""
@@ -86,6 +88,13 @@
   let editableContent = "";
   let isEditing = false;
   let saveTimeout: any = null;
+  
+  // 源文档同步相关变量
+  let syncInterval: any = null;
+  let lastDocUpdateTime = 0;
+  let isSyncing = false;
+  let syncIndicator = false; // 同步状态指示器
+  let isMetricsMode = false; // 是否为指标编辑模式
 
   // 新增：已访问文档列表弹窗相关
   let showVisitedDialog = false
@@ -362,6 +371,7 @@
     title = "漫游中..."
     content = ""
     tips = "加载中..."
+    isMetricsMode = false // 重置指标编辑模式标志，进入漫游模式
     let result = undefined // 修复linter错误，提升result作用域
     
     // 清空当前文档ID和指标数据，避免显示上一篇文章的数据
@@ -546,6 +556,149 @@
       tips = "发生了意外错误，请检查控制台日志获取详细信息。"
     } finally {
       isLoading = false
+    }
+  }
+
+  /**
+   * 直接打开指定文档进行渐进式阅读 - 从topbar图标点击触发
+   * 
+   * @param docId 要打开的文档ID
+   */
+  export const openSpecificDocForReading = async (docId: string) => {
+    try {
+      pluginInstance.logger.info(`直接打开文档进行渐进式阅读: ${docId}`)
+      
+      // 临时阻止响应式逻辑
+      const tempMetricsMode = isMetricsMode
+      isMetricsMode = true
+      
+      // 获取文档标题和内容
+      let docTitle = docId
+      let docContent = ""
+      
+      try {
+        // 并行获取标题和内容
+        const [titleResult, contentResult] = await Promise.all([
+          pluginInstance.kernelApi.getDocTitleById(docId).catch(() => docId),
+          pluginInstance.kernelApi.getDoc(docId)
+        ])
+        
+        docTitle = titleResult
+        
+        if (contentResult && contentResult.code === 0) {
+          const doc = contentResult.data as any
+          docContent = doc.content || ""
+        }
+        
+        pluginInstance.logger.info(`已获取文档: ${docTitle}, 内容长度: ${docContent.length}`)
+      } catch (error) {
+        pluginInstance.logger.error("获取文档信息失败:", error)
+        docContent = "获取文档内容失败: " + error.message
+      }
+      
+      // 一次性设置所有状态，避免触发多次响应式更新
+      currentRndId = docId
+      title = docTitle
+      content = docContent || "该文档内容为空"
+      editableContent = docContent
+      lastDocUpdateTime = Date.now()
+      tips = `正在阅读文档「${docTitle}」。你可以直接编辑内容，也可以点击"继续漫游"进行随机漫游。`
+      
+      // 恢复原来的模式设置
+      isMetricsMode = tempMetricsMode
+      
+      // 加载文档的优先级数据用于显示
+      try {
+        if (pr && typeof pr.getDocPriorityData === 'function') {
+          const docPriorityData = await pr.getDocPriorityData(docId)
+          docPriority = docPriorityData.metrics
+          docMetrics = reviewer.getMetrics()
+          pluginInstance.logger.info(`已加载文档 ${docId} 的指标数据`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn(`加载文档指标数据失败: ${error.message}`)
+      }
+      
+      pluginInstance.logger.info(`文档已打开: ${docId} (${docTitle})`)
+    } catch (error) {
+      pluginInstance.logger.error("打开文档失败:", error)
+      showMessage("打开文档失败: " + error.message, 4000, "error")
+    }
+  }
+
+  /**
+   * 设置当前文档为指标编辑目标 - 从topbar图标点击触发
+   * 仅更新指标面板，不影响筛选条件
+   * 
+   * @param docId 要设置为指标编辑目标的文档ID
+   */
+  export const setCurrentDocForMetrics = async (docId: string) => {
+    try {
+      pluginInstance.logger.info(`设置当前文档为指标编辑目标: ${docId}`)
+      
+      // 获取文档标题
+      let docTitle = docId
+      try {
+        docTitle = await pluginInstance.kernelApi.getDocTitleById(docId)
+        pluginInstance.logger.info(`已获取文档标题: ${docTitle}`)
+      } catch (error) {
+        pluginInstance.logger.warn(`无法获取文档标题: ${error.message}`)
+      }
+      
+      // 设置当前文档ID用于指标编辑，但不改变筛选条件
+      isMetricsMode = true // 标记为指标编辑模式
+      currentRndId = docId
+      title = docTitle
+      
+      // 加载该文档的内容以供查看和编辑
+      try {
+        const docResult = await pluginInstance.kernelApi.getDoc(docId)
+        if (docResult && docResult.code === 0) {
+          const doc = docResult.data as any
+          content = doc.content || "该文档内容为空"
+          // 直接设置editableContent，避免被响应式逻辑覆盖
+          editableContent = doc.content || ""
+          lastDocUpdateTime = Date.now()
+        } else {
+          content = "获取文档内容失败"
+          editableContent = ""
+        }
+      } catch (error) {
+        pluginInstance.logger.error("获取文档内容失败:", error)
+        content = "获取文档内容失败: " + error.message
+        editableContent = ""
+      }
+      
+      // 根据当前筛选条件生成提示信息
+      let filterDescription = "默认筛选条件"
+      if (filterMode === FilterMode.Notebook && selectedNotebooks.length > 0) {
+        filterDescription = `笔记本筛选 (已选择${selectedNotebooks.length}个笔记本)`
+      } else if (filterMode === FilterMode.Tag && selectedTags.length > 0) {
+        filterDescription = `标签筛选 (已选择${selectedTags.length}个标签)`
+      } else if (filterMode === FilterMode.Root && rootId) {
+        filterDescription = `根目录筛选 (${selectedDocTitle || rootId})`
+      } else if (filterMode === FilterMode.SQL && storeConfig.customSqlEnabled) {
+        filterDescription = "自定义SQL筛选"
+      }
+      
+      tips = `当前正在编辑文档「${docTitle}」的指标。点击"继续漫游"将使用「${filterDescription}」进行漫游。`
+
+      // 加载当前文档的指标数据
+      try {
+        if (pr && typeof pr.getDocPriorityData === 'function') {
+          const docPriorityData = await pr.getDocPriorityData(docId)
+          docPriority = docPriorityData.metrics
+          docMetrics = reviewer.getMetrics()
+          pluginInstance.logger.info(`已加载文档 ${docId} 的指标数据用于编辑`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn(`加载文档指标数据失败: ${error.message}`)
+      }
+
+      pluginInstance.logger.info(`指标编辑目标设置完成: ${docId} (${docTitle})`)
+    } catch (error) {
+      pluginInstance.logger.error("设置指标编辑目标失败:", error)
+      showMessage("设置指标编辑目标失败: " + error.message, 4000, "error")
     }
   }
 
@@ -1111,6 +1264,7 @@
     content = ""
     title = pluginInstance.i18n.welcomeTitle
     tips = "条件已改变，请重新漫游！待从头，收拾旧山河，朝天阙！"
+    isMetricsMode = false // 重置指标编辑模式标志
   }
 
   const onNotebookChange = async function () {
@@ -1607,6 +1761,8 @@
       
       if (result && result.code === 0) {
         pluginInstance.logger.info("内容已保存到源文档");
+        // 更新最后更新时间，避免自己的更新被检测为外部变化
+        lastDocUpdateTime = Date.now();
       } else {
         pluginInstance.logger.error("保存失败:", result?.msg);
       }
@@ -1617,8 +1773,10 @@
 
   // 处理内容编辑
   const handleContentEdit = (event: Event) => {
+    if ($isLocked) return; // 锁定状态下不处理编辑
     const target = event.target as HTMLElement;
     editableContent = target.innerHTML;
+    isEditing = true; // 标记正在编辑，暂停同步检测
     debouncedSave(editableContent);
   };
 
@@ -1632,16 +1790,91 @@ const initEditableContent = async () => {
     if (docResult && docResult.code === 0) {
       const doc = docResult.data as any;
       editableContent = doc.content || "";
+      
+      // 更新最后更新时间（用于同步检测）
+      lastDocUpdateTime = Date.now();
     }
   } catch (error) {
     pluginInstance.logger.error("获取文档内容失败:", error);
     editableContent = content; // 回退到原有内容
   }
+}
+
+// 检测源文档是否有变化
+const checkDocumentChanges = async () => {
+  if (!currentRndId || isEditing || isSyncing) {
+    return; // 如果正在编辑或同步中，跳过检测
+  }
+  
+  try {
+    isSyncing = true;
+    syncIndicator = true;
+    
+    // 获取当前文档的最新内容
+    const docResult = await pluginInstance.kernelApi.getDoc(currentRndId);
+    if (docResult && docResult.code === 0) {
+      const doc = docResult.data as any;
+      const latestContent = doc.content || "";
+      
+      // 比较内容是否有变化
+      if (latestContent !== editableContent) {
+        pluginInstance.logger.info("检测到源文档内容变化，正在同步...");
+        
+        // 更新编辑区内容
+        editableContent = latestContent;
+        lastDocUpdateTime = Date.now();
+        
+        // 显示同步提示
+        setTimeout(() => {
+          syncIndicator = false;
+        }, 1000);
+        
+        pluginInstance.logger.info("源文档内容已同步到漫游页面");
+      } else {
+        syncIndicator = false;
+      }
+    }
+  } catch (error) {
+    pluginInstance.logger.warn("检测文档变化失败:", error);
+    syncIndicator = false;
+  } finally {
+    isSyncing = false;
+  }
+}
+
+// 启动文档同步检测
+const startDocumentSync = () => {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+  }
+  
+  if (currentRndId) {
+    // 每2秒检测一次文档变化
+    syncInterval = setInterval(checkDocumentChanges, 2000);
+    pluginInstance.logger.info("已启动源文档同步检测");
+  }
+}
+
+// 停止文档同步检测
+const stopDocumentSync = () => {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+    syncIndicator = false;
+    pluginInstance.logger.info("已停止源文档同步检测");
+  }
 };
 
-  // 当文档ID变化时初始化可编辑内容
-  $: if (currentRndId) {
+  // 当文档ID变化时初始化可编辑内容并启动同步
+  $: if (currentRndId && !isMetricsMode) {
+    // 只有在非指标编辑模式时才自动初始化内容
     initEditableContent();
+    startDocumentSync();
+  } else if (currentRndId && isMetricsMode) {
+    // 指标编辑模式只启动同步，不重新初始化内容
+    startDocumentSync();
+  } else {
+    stopDocumentSync();
   }
 
   // 在漫游、切换文档、初始化等时刷新点图
@@ -1649,10 +1882,13 @@ const initEditableContent = async () => {
     refreshPriorityBarPoints()
   }
 
+
   onDestroy(() => {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
     }
+    // 清理文档同步定时器
+    stopDocumentSync();
   });
 
   // lifecycle
@@ -1760,6 +1996,9 @@ const initEditableContent = async () => {
       // 开始漫游
       await doIncrementalRandomDoc()
     }
+
+    // 插件初始化完成
+    pluginInstance.logger.info("✅ 插件初始化完成")
   })
 </script>
 
@@ -1776,14 +2015,19 @@ const initEditableContent = async () => {
         data-render="true"
       >
         {title}
+        {#if syncIndicator}
+          <span class="sync-indicator" title="正在同步源文档变化...">
+            🔄
+          </span>
+        {/if}
       </div>
     </div>
-     <div
-       class="protyle-wysiwyg protyle-wysiwyg--attr"
-       spellcheck="false"
-       style="padding: 16px 96px 281.5px;"
-       data-doc-type="NodeDocument"
-     >
+    <div
+      class="protyle-wysiwyg protyle-wysiwyg--attr"
+      spellcheck="false"
+      style="padding: 16px 96px 281.5px;"
+      data-doc-type="NodeDocument"
+    >
        <!-- 关闭按钮 - 仅移动端显示 -->
        <div class="close-button-container">
          <button 
@@ -1807,15 +2051,23 @@ const initEditableContent = async () => {
            ✕
          </button>
        </div>
-       <div class="action-btn-group">
+      <div class="action-btn-group">
         <!-- 移动端专用布局 - 解决移动端按钮过大、布局混乱问题 -->
         <div class="mobile-layout">
           <!-- 第一行：筛选框 - 移动端优化布局，筛选元素独立一行 -->
           <div class="mobile-row-1">
+             <button class="mobile-lock-btn" on:click={toggleLock} title={$isLocked ? '点击解锁编辑' : '点击锁定编辑'}>
+               {#if $isLocked}
+                 🔒
+               {:else}
+                 🔓
+               {/if}
+             </button>
              <select
                bind:value={filterMode}
                class="action-item b3-select fn__flex-center fn__size100"
                on:change={onFilterModeChange}
+               disabled={$isLocked}
              >
             <option value={FilterMode.Notebook}>笔记本</option>
             <option value={FilterMode.Root}>根文档</option>
@@ -1882,6 +2134,8 @@ const initEditableContent = async () => {
                          bind:value={manualInputId}
                          placeholder="请输入文档ID..."
                          on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                         disabled={$isLocked}
+                         readonly={$isLocked}
                        />
                        <div class="input-buttons">
                          <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
@@ -2071,56 +2325,66 @@ const initEditableContent = async () => {
 
         <!-- 桌面端原有布局 - 保持原有桌面端布局不变 -->
         <div class="desktop-layout">
-           <span class="filter-label">筛选:</span>
-           <select
-             bind:value={filterMode}
-             class="action-item b3-select fn__flex-center fn__size100"
-             on:change={onFilterModeChange}
-           >
-            <option value={FilterMode.Notebook}>笔记本</option>
-            <option value={FilterMode.Root}>根文档</option>
-            <option value={FilterMode.Tag}>标签</option>
-          </select>
-           {#if filterMode === FilterMode.Notebook}
-             <div class="notebook-selector">
-               <button
-                 class="action-item b3-select fn__flex-center fn__size150"
-                 on:click={() => showNotebookSelector = !showNotebookSelector}
-               >
-                 {#if selectedNotebooks.length === 0}
-                   请选择
-                 {:else if selectedNotebooks.length === 1}
-                   {getNotebookName(selectedNotebooks[0])}
-                 {:else}
-                   已选{selectedNotebooks.length}个
-                 {/if}
-               </button>
-               {#if showNotebookSelector}
-                 <div class="notebook-list">
-                   {#each notebooks as notebook (notebook.id)}
-                     <label class="notebook-item">
-                       <input
-                         type="checkbox"
-                         checked={selectedNotebooks.includes(notebook.id)}
-                         on:change={() => toggleNotebook(notebook.id)}
-                       />
-                       {notebook.name}
-                     </label>
-                   {/each}
-                   <div class="confirm-button-container">
-                     <button
-                       class="b3-button b3-button--outline fn__size150"
-                       on:click={() => {
-                         showNotebookSelector = false;
-                         onNotebookChange();
-                       }}
-                     >
-                       确定
-                     </button>
-                   </div>
-                 </div>
+           <div class="filter-header">
+        <span class="filter-label">筛选:</span>
+             <button class="lock-btn" on:click={toggleLock} title={$isLocked ? '点击解锁编辑' : '点击锁定编辑'}>
+               {#if $isLocked}
+                 🔒
+               {:else}
+                 🔓
                {/if}
-             </div>
+             </button>
+           </div>
+        <select
+          bind:value={filterMode}
+          class="action-item b3-select fn__flex-center fn__size100"
+          on:change={onFilterModeChange}
+             disabled={$isLocked}
+        >
+          <option value={FilterMode.Notebook}>笔记本</option>
+          <option value={FilterMode.Root}>根文档</option>
+            <option value={FilterMode.Tag}>标签</option>
+        </select>
+        {#if filterMode === FilterMode.Notebook}
+          <div class="notebook-selector">
+            <button
+              class="action-item b3-select fn__flex-center fn__size150"
+              on:click={() => showNotebookSelector = !showNotebookSelector}
+            >
+              {#if selectedNotebooks.length === 0}
+                   请选择
+              {:else if selectedNotebooks.length === 1}
+                {getNotebookName(selectedNotebooks[0])}
+              {:else}
+                   已选{selectedNotebooks.length}个
+              {/if}
+            </button>
+            {#if showNotebookSelector}
+              <div class="notebook-list">
+                {#each notebooks as notebook (notebook.id)}
+                  <label class="notebook-item">
+                    <input
+                      type="checkbox"
+                      checked={selectedNotebooks.includes(notebook.id)}
+                      on:change={() => toggleNotebook(notebook.id)}
+                    />
+                    {notebook.name}
+                  </label>
+                {/each}
+                <div class="confirm-button-container">
+                  <button
+                    class="b3-button b3-button--outline fn__size150"
+                    on:click={() => {
+                      showNotebookSelector = false;
+                      onNotebookChange();
+                    }}
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
            {:else if filterMode === FilterMode.Root}
              <div class="root-doc-selector mobile-root-selector">
                <button
@@ -2142,6 +2406,8 @@ const initEditableContent = async () => {
                        bind:value={manualInputId}
                        placeholder="请输入文档ID..."
                        on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                       disabled={$isLocked}
+                       readonly={$isLocked}
                      />
                      <div class="input-buttons">
                        <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
@@ -2195,7 +2461,7 @@ const initEditableContent = async () => {
                              <span class="tree-label">{doc.title}</span>
                            </div>
                          {/each}
-                       {:else}
+        {:else}
                          <div class="tree-empty">该笔记本下没有根文档</div>
                        {/if}
                      </div>
@@ -2223,7 +2489,7 @@ const initEditableContent = async () => {
                    {#if availableTags.length > 0}
                      {#each availableTags as tag}
                        <label class="tag-item">
-                         <input
+          <input
                            type="checkbox"
                            checked={selectedTags.includes(tag)}
                            on:change={() => toggleTag(tag)}
@@ -2255,70 +2521,70 @@ const initEditableContent = async () => {
                  <div class="tag-loading">加载中...</div>
                {/if}
              </div>
-           {/if}
-           {#if storeConfig?.customSqlEnabled}
-             <select
-               class="action-item b3-select fn__flex-center fn__size180 notebook-select"
-               bind:value={currentSql}
-               on:change={onSqlChange}
-             >
-               {#if sqlList && sqlList.length > 0}
-                 {#each sqlList as s (s.sql)}
-                   <option value={s.sql}>{s.name}</option>
-                 {/each}
-               {:else}
-                 <option value="">{pluginInstance.i18n.loading}...</option>
-               {/if}
-             </select>
-             <span class="custom-sql">当前使用自定义 SQL 漫游</span>
-          {/if}
+        {/if}
+        {#if storeConfig?.customSqlEnabled}
+          <select
+            class="action-item b3-select fn__flex-center fn__size180 notebook-select"
+            bind:value={currentSql}
+            on:change={onSqlChange}
+          >
+            {#if sqlList && sqlList.length > 0}
+              {#each sqlList as s (s.sql)}
+                <option value={s.sql}>{s.name}</option>
+              {/each}
+            {:else}
+              <option value="">{pluginInstance.i18n.loading}...</option>
+            {/if}
+          </select>
+          <span class="custom-sql">当前使用自定义 SQL 漫游</span>
+       {/if}
 
-                 <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
-                 <button
-                   class="action-item b3-button primary-btn btn-small"
-                   on:click={doIncrementalRandomDoc}
-                   on:touchend|preventDefault={doIncrementalRandomDoc}
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   继续漫游
-                 </button>
-                 <button
-                   class="action-item b3-button primary-btn btn-small"
-                   on:click={openDocEditor}
-                   on:touchend|preventDefault={openDocEditor}
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   打开该文档
-                 </button>
-                 <button
-                   class="action-item b3-button b3-button--outline btn-small reset-button"
-                   on:click={openVisitedDocs}
-                   on:touchend|preventDefault={openVisitedDocs}
-                   title="查看已漫游文档列表"
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   已漫游文档
-                 </button>
-                 <button
-                   class="action-item b3-button b3-button--outline btn-small"
-                   on:click={openPriorityDialog}
-                   on:touchend|preventDefault={openPriorityDialog}
-                   title="优先级排序列表"
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   优先级排序表
-                 </button>
-                 <button
-                   class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
-                   on:click={() => showSettingMenu(pluginInstance)}
-                   on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
-                   title={pluginInstance.i18n.setting}
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   {@html icons.iconSetting}
-                 </button>
+              <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
+              <button
+                class="action-item b3-button primary-btn btn-small"
+                on:click={doIncrementalRandomDoc}
+                on:touchend|preventDefault={doIncrementalRandomDoc}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                继续漫游
+              </button>
+              <button
+                class="action-item b3-button primary-btn btn-small"
+                on:click={openDocEditor}
+                on:touchend|preventDefault={openDocEditor}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                打开该文档
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small reset-button"
+                on:click={openVisitedDocs}
+                on:touchend|preventDefault={openVisitedDocs}
+                title="查看已漫游文档列表"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                已漫游文档
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small"
+                on:click={openPriorityDialog}
+                on:touchend|preventDefault={openPriorityDialog}
+                title="优先级排序列表"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                优先级排序表
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+                on:click={() => showSettingMenu(pluginInstance)}
+                on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+                title={pluginInstance.i18n.setting}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                {@html icons.iconSetting}
+              </button>
          </div>
-       </div>
+            </div>
 
       <!-- 已访问文档弹窗 -->
       {#if showVisitedDialog}
@@ -2361,28 +2627,28 @@ const initEditableContent = async () => {
            <div class="mobile-metrics-content">
              {#if currentRndId}
                <MetricsPanel
-                 pluginInstance={pluginInstance}
-                 docId={currentRndId}
-                 reviewer={pr}
-                 metrics={docMetrics}
-                 {docPriority}
-                 forceExpanded={true}
-                 on:priorityChange={handleMetricsPanelPriorityChange}
+                pluginInstance={pluginInstance}
+                docId={currentRndId}
+                reviewer={pr}
+                metrics={docMetrics}
+                {docPriority}
+                forceExpanded={true}
+                on:priorityChange={handleMetricsPanelPriorityChange}
                />
              {:else}
                <div>请先选择一个文档</div>
-             {/if}
-           </div>
-         </div>
-       {/if}
+            {/if}
+          </div>
+        </div>
+      {/if}
 
-       {#if showPriorityDialog}
-         <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
-         <div class="visited-dialog">
-           <div class="visited-dialog-header">
-             <span>优先级排序列表</span>
-             <button class="close-btn" on:click={closePriorityDialog}>×</button>
-           </div>
+      {#if showPriorityDialog}
+        <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
+        <div class="visited-dialog">
+          <div class="visited-dialog-header">
+            <span>优先级排序列表</span>
+            <button class="close-btn" on:click={closePriorityDialog}>×</button>
+          </div>
           <div class="visited-list">
             {#if priorityLoading}
               <div>加载中...</div>
@@ -2448,27 +2714,27 @@ const initEditableContent = async () => {
        <!-- 桌面端专用：文档指标和优先级图表 -->
        <!-- 桌面端指标和图表组件 - 移动端隐藏，避免重复显示 -->
       <div class="desktop-metrics-section">
-         {#if currentRndId}
-           <MetricsPanel
-             pluginInstance={pluginInstance}
-             docId={currentRndId}
-             reviewer={pr}
-             metrics={docMetrics}
-             {docPriority}
-             on:priorityChange={handleMetricsPanelPriorityChange}
-           />
-           <!-- 优先级分布点图 -->
-           <PriorityBarChart
-             points={priorityBarPoints}
-             currentId={currentRndId}
-             minPriority={priorityBarMin}
-             maxPriority={priorityBarMax}
-             height={48}
-             on:dragging={handlePriorityBarDragging}
-             on:change={handlePriorityBarChange}
-             on:openDocument={handleOpenDocument}
-           />
-         {/if}
+      {#if currentRndId}
+        <MetricsPanel
+          pluginInstance={pluginInstance}
+          docId={currentRndId}
+          reviewer={pr}
+          metrics={docMetrics}
+          {docPriority}
+          on:priorityChange={handleMetricsPanelPriorityChange}
+        />
+        <!-- 优先级分布点图 -->
+        <PriorityBarChart
+          points={priorityBarPoints}
+          currentId={currentRndId}
+          minPriority={priorityBarMin}
+          maxPriority={priorityBarMax}
+          height={48}
+          on:dragging={handlePriorityBarDragging}
+          on:change={handlePriorityBarChange}
+          on:openDocument={handleOpenDocument}
+        />
+      {/if}
        </div>
 
       <div class="rnd-doc-custom-tips">
@@ -2481,6 +2747,16 @@ const initEditableContent = async () => {
           <div class="protyle-attr" contenteditable="false" />
         </div>
       </div>
+      {#if $isLocked}
+        <div 
+          class="editable-content-area content-locked"
+          contenteditable="false"
+          spellcheck="false"
+          style="opacity: 0.7; cursor: not-allowed; user-select: none; pointer-events: none;"
+        >
+          {@html editableContent}
+        </div>
+      {:else}
       <div 
         class="editable-content-area"
         contenteditable="true"
@@ -2497,6 +2773,7 @@ const initEditableContent = async () => {
         }}
         on:focus={() => isEditing = true}
       ></div>
+      {/if}
     </div>
   </div>
 </div>
@@ -2509,6 +2786,19 @@ const initEditableContent = async () => {
     margin-left 10px
     color: red
     font-size 13px
+
+  .sync-indicator
+    margin-left 8px
+    font-size 14px
+    color: var(--b3-theme-primary)
+    animation: spin 1s linear infinite
+    display: inline-block
+
+  @keyframes spin
+    0%
+      transform: rotate(0deg)
+    100%
+      transform: rotate(360deg)
 
   .action-btn-group
     margin: 10px 0
@@ -2524,6 +2814,60 @@ const initEditableContent = async () => {
     font-size 13px
     margin-left 2px
     margin-right 2px
+
+  .filter-header
+    display flex
+    align-items center
+    gap 8px
+
+  .lock-btn
+    background none
+    border none
+    cursor pointer
+    font-size 14px
+    padding 2px 4px
+    border-radius 3px
+    opacity 0.7
+    transition opacity 0.2s ease, background-color 0.2s ease
+
+  .lock-btn:hover
+    opacity 1
+    background-color var(--b3-theme-surface-light)
+
+  .mobile-lock-btn
+    background none
+    border none
+    cursor pointer
+    font-size 14px
+    padding 2px 4px
+    border-radius 3px
+    opacity 0.7
+    transition opacity 0.2s ease, background-color 0.2s ease
+    height 32px
+    width 32px
+    flex 0 0 auto
+
+  .mobile-lock-btn:hover
+    opacity 1
+    background-color var(--b3-theme-surface-light)
+
+  .content-locked
+    background-color var(--b3-theme-surface-light)
+    border 1px dashed var(--b3-border-color)
+    border-radius 4px
+    position relative
+
+  .content-locked::before
+    content "🔒 内容已锁定"
+    position absolute
+    top 8px
+    right 8px
+    background-color var(--b3-theme-background)
+    padding 2px 8px
+    border-radius 4px
+    font-size 12px
+    color var(--b3-theme-on-surface-light)
+    z-index 1
     
   .btn-small
     padding: 4px 8px
@@ -2794,17 +3138,17 @@ const initEditableContent = async () => {
 
   /* 移动端适配 - 解决移动端UI元素过大、布局混乱、按钮占用空间过多的问题 */
   @media (max-width: 768px) {
-     .protyle-content {
-       padding: 8px !important;
-     }
+    .protyle-content {
+      padding: 8px !important;
+    }
 
-     .protyle-title {
-       margin: 8px 16px !important;
-     }
+    .protyle-title {
+      margin: 8px 16px !important;
+    }
 
-     .protyle-wysiwyg {
-       padding: 8px 16px !important;
-     }
+    .protyle-wysiwyg {
+      padding: 8px 16px !important;
+    }
 
      /* 关闭按钮样式 - 仅移动端显示 */
      .close-button-container {
@@ -2853,7 +3197,7 @@ const initEditableContent = async () => {
        align-items: center;
        gap: 6px;
        margin-bottom: 8px;
-       flex-wrap: wrap;
+      flex-wrap: wrap;
      }
 
      /* 第一个筛选框固定宽度，为笔记本选择器让出空间 */
@@ -2867,7 +3211,7 @@ const initEditableContent = async () => {
      }
 
      .mobile-row-1 .b3-text-field {
-       flex: 1;
+      flex: 1;
        height: 32px;
        font-size: 12px;
        min-width: 80px;
@@ -2888,7 +3232,7 @@ const initEditableContent = async () => {
        font-size: 12px !important;
        width: 100% !important;
        min-width: 0 !important;
-       max-width: none !important;
+      max-width: none !important;
        flex: 1 !important;
        padding: 4px 8px !important;
        text-overflow: ellipsis !important;
@@ -3000,10 +3344,10 @@ const initEditableContent = async () => {
        width: 95% !important;
        max-width: none !important;
        margin: 20px auto;
-     }
-   }
+    }
+  }
 
- @media (max-width: 480px) {
+  @media (max-width: 480px) {
     .protyle-title .protyle-title__input {
       font-size: 18px !important;
     }

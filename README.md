@@ -165,7 +165,7 @@
         <h2 style="color: #dc2626; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🫧 Support the Author</h2>
         <p style="margin: 0.5em 0;">If Roaming Mode Incremental Reading helps your learning, please consider giving a like or buying a coffee. This encourages the author to keep optimizing and developing more useful features:</p>
         <div style="margin: 1em 0; text-align: center;">
-            <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
+            <img src="https://i0.hdslb.com/bfs/openplatform/12bb6dd415d52c76318b4fb391f179e69d263a54.png@1e_1c.webp"
                  alt="Desktop Donation QR Code"
                  style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <p style="margin: 0.5em 0; color: #666;">Desktop - WeChat/Alipay</p>

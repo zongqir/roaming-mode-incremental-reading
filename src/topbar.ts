@@ -245,11 +245,11 @@ const roamRecentDocument = async (pluginInstance: RandomDocPlugin) => {
       return
     }
 
-        // 3.3.3 设置当前文档为指标编辑目标，不改变筛选条件
-        await pluginInstance.tabContentInstance.setCurrentDocForMetrics(recentDocId)
+        // 3.3.3 直接打开该文档进行渐进式阅读
+        await pluginInstance.tabContentInstance.openSpecificDocForReading(recentDocId)
     
     // 3.3.4 显示成功消息
-    showMessage(`已设置当前文档为指标编辑目标，点击"继续漫游"将使用之前的筛选条件进行漫游`, 4000, "info")
+    showMessage(`已打开当前文档进行渐进式阅读`, 4000, "info")
     
   } catch (error) {
     pluginInstance.logger.error("漫游最近文档失败:", error)

@@ -88,6 +88,13 @@
   let editableContent = "";
   let isEditing = false;
   let saveTimeout: any = null;
+  
+  // 源文档同步相关变量
+  let syncInterval: any = null;
+  let lastDocUpdateTime = 0;
+  let isSyncing = false;
+  let syncIndicator = false; // 同步状态指示器
+  let isMetricsMode = false; // 是否为指标编辑模式
 
   // 新增：已访问文档列表弹窗相关
   let showVisitedDialog = false
@@ -364,6 +371,7 @@
     title = "漫游中..."
     content = ""
     tips = "加载中..."
+    isMetricsMode = false // 重置指标编辑模式标志，进入漫游模式
     let result = undefined // 修复linter错误，提升result作用域
     
     // 清空当前文档ID和指标数据，避免显示上一篇文章的数据
@@ -552,6 +560,73 @@
   }
 
   /**
+   * 直接打开指定文档进行渐进式阅读 - 从topbar图标点击触发
+   * 
+   * @param docId 要打开的文档ID
+   */
+  export const openSpecificDocForReading = async (docId: string) => {
+    try {
+      pluginInstance.logger.info(`直接打开文档进行渐进式阅读: ${docId}`)
+      
+      // 临时阻止响应式逻辑
+      const tempMetricsMode = isMetricsMode
+      isMetricsMode = true
+      
+      // 获取文档标题和内容
+      let docTitle = docId
+      let docContent = ""
+      
+      try {
+        // 并行获取标题和内容
+        const [titleResult, contentResult] = await Promise.all([
+          pluginInstance.kernelApi.getDocTitleById(docId).catch(() => docId),
+          pluginInstance.kernelApi.getDoc(docId)
+        ])
+        
+        docTitle = titleResult
+        
+        if (contentResult && contentResult.code === 0) {
+          const doc = contentResult.data as any
+          docContent = doc.content || ""
+        }
+        
+        pluginInstance.logger.info(`已获取文档: ${docTitle}, 内容长度: ${docContent.length}`)
+      } catch (error) {
+        pluginInstance.logger.error("获取文档信息失败:", error)
+        docContent = "获取文档内容失败: " + error.message
+      }
+      
+      // 一次性设置所有状态，避免触发多次响应式更新
+      currentRndId = docId
+      title = docTitle
+      content = docContent || "该文档内容为空"
+      editableContent = docContent
+      lastDocUpdateTime = Date.now()
+      tips = `正在阅读文档「${docTitle}」。你可以直接编辑内容，也可以点击"继续漫游"进行随机漫游。`
+      
+      // 恢复原来的模式设置
+      isMetricsMode = tempMetricsMode
+      
+      // 加载文档的优先级数据用于显示
+      try {
+        if (pr && typeof pr.getDocPriorityData === 'function') {
+          const docPriorityData = await pr.getDocPriorityData(docId)
+          docPriority = docPriorityData.metrics
+          docMetrics = reviewer.getMetrics()
+          pluginInstance.logger.info(`已加载文档 ${docId} 的指标数据`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn(`加载文档指标数据失败: ${error.message}`)
+      }
+      
+      pluginInstance.logger.info(`文档已打开: ${docId} (${docTitle})`)
+    } catch (error) {
+      pluginInstance.logger.error("打开文档失败:", error)
+      showMessage("打开文档失败: " + error.message, 4000, "error")
+    }
+  }
+
+  /**
    * 设置当前文档为指标编辑目标 - 从topbar图标点击触发
    * 仅更新指标面板，不影响筛选条件
    * 
@@ -571,9 +646,28 @@
       }
       
       // 设置当前文档ID用于指标编辑，但不改变筛选条件
+      isMetricsMode = true // 标记为指标编辑模式
       currentRndId = docId
       title = docTitle
-      content = "" // 清空内容区域
+      
+      // 加载该文档的内容以供查看和编辑
+      try {
+        const docResult = await pluginInstance.kernelApi.getDoc(docId)
+        if (docResult && docResult.code === 0) {
+          const doc = docResult.data as any
+          content = doc.content || "该文档内容为空"
+          // 直接设置editableContent，避免被响应式逻辑覆盖
+          editableContent = doc.content || ""
+          lastDocUpdateTime = Date.now()
+        } else {
+          content = "获取文档内容失败"
+          editableContent = ""
+        }
+      } catch (error) {
+        pluginInstance.logger.error("获取文档内容失败:", error)
+        content = "获取文档内容失败: " + error.message
+        editableContent = ""
+      }
       
       // 根据当前筛选条件生成提示信息
       let filterDescription = "默认筛选条件"
@@ -1170,6 +1264,7 @@
     content = ""
     title = pluginInstance.i18n.welcomeTitle
     tips = "条件已改变，请重新漫游！待从头，收拾旧山河，朝天阙！"
+    isMetricsMode = false // 重置指标编辑模式标志
   }
 
   const onNotebookChange = async function () {
@@ -1666,6 +1761,8 @@
       
       if (result && result.code === 0) {
         pluginInstance.logger.info("内容已保存到源文档");
+        // 更新最后更新时间，避免自己的更新被检测为外部变化
+        lastDocUpdateTime = Date.now();
       } else {
         pluginInstance.logger.error("保存失败:", result?.msg);
       }
@@ -1679,6 +1776,7 @@
     if ($isLocked) return; // 锁定状态下不处理编辑
     const target = event.target as HTMLElement;
     editableContent = target.innerHTML;
+    isEditing = true; // 标记正在编辑，暂停同步检测
     debouncedSave(editableContent);
   };
 
@@ -1692,16 +1790,91 @@ const initEditableContent = async () => {
     if (docResult && docResult.code === 0) {
       const doc = docResult.data as any;
       editableContent = doc.content || "";
+      
+      // 更新最后更新时间（用于同步检测）
+      lastDocUpdateTime = Date.now();
     }
   } catch (error) {
     pluginInstance.logger.error("获取文档内容失败:", error);
     editableContent = content; // 回退到原有内容
   }
+}
+
+// 检测源文档是否有变化
+const checkDocumentChanges = async () => {
+  if (!currentRndId || isEditing || isSyncing) {
+    return; // 如果正在编辑或同步中，跳过检测
+  }
+  
+  try {
+    isSyncing = true;
+    syncIndicator = true;
+    
+    // 获取当前文档的最新内容
+    const docResult = await pluginInstance.kernelApi.getDoc(currentRndId);
+    if (docResult && docResult.code === 0) {
+      const doc = docResult.data as any;
+      const latestContent = doc.content || "";
+      
+      // 比较内容是否有变化
+      if (latestContent !== editableContent) {
+        pluginInstance.logger.info("检测到源文档内容变化，正在同步...");
+        
+        // 更新编辑区内容
+        editableContent = latestContent;
+        lastDocUpdateTime = Date.now();
+        
+        // 显示同步提示
+        setTimeout(() => {
+          syncIndicator = false;
+        }, 1000);
+        
+        pluginInstance.logger.info("源文档内容已同步到漫游页面");
+      } else {
+        syncIndicator = false;
+      }
+    }
+  } catch (error) {
+    pluginInstance.logger.warn("检测文档变化失败:", error);
+    syncIndicator = false;
+  } finally {
+    isSyncing = false;
+  }
+}
+
+// 启动文档同步检测
+const startDocumentSync = () => {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+  }
+  
+  if (currentRndId) {
+    // 每2秒检测一次文档变化
+    syncInterval = setInterval(checkDocumentChanges, 2000);
+    pluginInstance.logger.info("已启动源文档同步检测");
+  }
+}
+
+// 停止文档同步检测
+const stopDocumentSync = () => {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+    syncIndicator = false;
+    pluginInstance.logger.info("已停止源文档同步检测");
+  }
 };
 
-  // 当文档ID变化时初始化可编辑内容
-  $: if (currentRndId) {
+  // 当文档ID变化时初始化可编辑内容并启动同步
+  $: if (currentRndId && !isMetricsMode) {
+    // 只有在非指标编辑模式时才自动初始化内容
     initEditableContent();
+    startDocumentSync();
+  } else if (currentRndId && isMetricsMode) {
+    // 指标编辑模式只启动同步，不重新初始化内容
+    startDocumentSync();
+  } else {
+    stopDocumentSync();
   }
 
   // 在漫游、切换文档、初始化等时刷新点图
@@ -1714,6 +1887,8 @@ const initEditableContent = async () => {
     if (saveTimeout) {
       clearTimeout(saveTimeout);
     }
+    // 清理文档同步定时器
+    stopDocumentSync();
   });
 
   // lifecycle
@@ -1840,6 +2015,11 @@ const initEditableContent = async () => {
         data-render="true"
       >
         {title}
+        {#if syncIndicator}
+          <span class="sync-indicator" title="正在同步源文档变化...">
+            🔄
+          </span>
+        {/if}
       </div>
     </div>
     <div
@@ -2606,6 +2786,19 @@ const initEditableContent = async () => {
     margin-left 10px
     color: red
     font-size 13px
+
+  .sync-indicator
+    margin-left 8px
+    font-size 14px
+    color: var(--b3-theme-primary)
+    animation: spin 1s linear infinite
+    display: inline-block
+
+  @keyframes spin
+    0%
+      transform: rotate(0deg)
+    100%
+      transform: rotate(360deg)
 
   .action-btn-group
     margin: 10px 0

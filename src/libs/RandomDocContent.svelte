@@ -55,6 +55,16 @@
   let availableTags: string[] = []
   let isTagsLoading = false
   let showTagDropdown = false
+  
+  // 根文档选择器相关变量 - 混合输入模式
+  let isDocsLoading = false
+  let showDocSelector = false
+  let selectedDocTitle = ""
+  let currentLevel = "notebooks" // "notebooks" | "docs"
+  let selectedNotebookForDoc = null // 当前选中的笔记本
+  let rootDocsList: any[] = [] // 当前笔记本下的根文档列表
+  let showManualInput = false // 是否显示手动输入框
+  let manualInputId = "" // 手动输入的ID
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
   let currentRndId
@@ -1099,6 +1109,7 @@
   const clearDoc = () => {
     currentRndId = undefined
     content = ""
+    title = pluginInstance.i18n.welcomeTitle
     tips = "条件已改变，请重新漫游！待从头，收拾旧山河，朝天阙！"
   }
 
@@ -1205,8 +1216,26 @@
   }
 
   const onRootIdChange = async function () {
-    // 显示当前选择的名称
+    pluginInstance.logger.info("onRootIdChange 被调用, rootId:", rootId, "selectedDocTitle:", selectedDocTitle)
+    
+    // 如果有rootId但没有标题，立即获取文档标题
+    if (rootId && !selectedDocTitle) {
+      try {
+        const docTitle = await pluginInstance.kernelApi.getDocTitleById(rootId)
+        if (docTitle && docTitle !== "(未找到文档)" && docTitle !== "(获取失败)") {
+          selectedDocTitle = docTitle
+          pluginInstance.logger.info(`rootId变更时获取文档标题: ${rootId} -> ${selectedDocTitle}`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn("rootId变更时获取文档标题失败:", error)
+      }
+    }
+    
+    // 保存rootId和文档标题
     storeConfig.rootId = rootId
+    if (selectedDocTitle) {
+      storeConfig.rootDocTitle = selectedDocTitle
+    }
     await pluginInstance.saveData(storeName, storeConfig)
     
     // 重置文档
@@ -1283,6 +1312,140 @@
     selectedTags = []
     // 立即触发保存和更新
     onTagsChange()
+  }
+
+  // 开始文档选择流程 - 显示笔记本列表
+  const startDocumentSelection = async function () {
+    if (isDocsLoading) return
+    
+    showDocSelector = true
+    currentLevel = "notebooks"
+    selectedNotebookForDoc = null
+    rootDocsList = []
+  }
+
+  // 选择笔记本，加载其下的根文档
+  const selectNotebookForDoc = async function (notebook: any) {
+    if (isDocsLoading) return
+    
+    isDocsLoading = true
+    selectedNotebookForDoc = notebook
+    currentLevel = "docs"
+    
+    try {
+      const result = await pluginInstance.kernelApi.getRootDocs(notebook.id)
+      
+      if (result.code !== 0) {
+        pluginInstance.logger.error(`获取文档列表失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        rootDocsList = []
+        return
+      }
+
+      const actualData = result.data || []
+      rootDocsList = actualData.map(doc => ({
+        id: doc.id,
+        title: doc.title || '(无标题)'
+      }))
+      
+      pluginInstance.logger.info(`获取到 ${rootDocsList.length} 个根文档`)
+    } catch (error) {
+      pluginInstance.logger.error("获取根文档列表失败", error)
+      rootDocsList = []
+    } finally {
+      isDocsLoading = false
+    }
+  }
+
+  // 返回笔记本选择
+  const backToNotebookSelection = function () {
+    currentLevel = "notebooks"
+    selectedNotebookForDoc = null
+    rootDocsList = []
+  }
+
+  // 选择文档
+  const selectDocument = async function (docId: string, docTitle: string) {
+    rootId = docId
+    selectedDocTitle = docTitle
+    showDocSelector = false
+    
+    // 保存配置
+    storeConfig.rootId = rootId
+    if (selectedDocTitle) {
+      storeConfig.rootDocTitle = selectedDocTitle
+    }
+    await pluginInstance.saveData(storeName, storeConfig)
+    
+    pluginInstance.logger.info(`已设置根文档为: ${docId} - ${docTitle}`)
+  }
+
+  // 响应式计算当前选中文档的标题
+  $: currentDocTitle = (() => {
+    if (!rootId) {
+      return "请选择文档"
+    }
+    
+    // 优先显示已缓存的文档标题
+    if (selectedDocTitle) {
+      return selectedDocTitle
+    }
+    
+    // 其次尝试从文档列表中查找
+    const doc = rootDocsList.find(d => d.id === rootId)
+    if (doc && doc.title) {
+      return doc.title
+    }
+    
+    // 如果都没有标题，显示ID片段作为临时占位符
+    return rootId.substring(0, 8) + "..."
+  })()
+
+  // 切换到手动输入模式
+  const switchToManualInput = function () {
+    showManualInput = true
+    showDocSelector = false
+    manualInputId = rootId || ""
+  }
+
+  // 处理手动输入ID的确认
+  const confirmManualInput = async function () {
+    if (!manualInputId.trim()) {
+      return
+    }
+
+    isDocsLoading = true
+    try {
+      // 获取文档标题
+      const docTitle = await pluginInstance.kernelApi.getDocTitleById(manualInputId.trim())
+      
+      // 更新rootId和标题
+      rootId = manualInputId.trim()
+      selectedDocTitle = docTitle
+      
+      // 关闭输入框
+      showManualInput = false
+      
+      // 保存配置
+      storeConfig.rootId = rootId
+      if (selectedDocTitle) {
+        storeConfig.rootDocTitle = selectedDocTitle
+      }
+      await pluginInstance.saveData(storeName, storeConfig)
+      
+      pluginInstance.logger.info(`手动输入完成，根文档: ${rootId} - ${docTitle}`)
+    } catch (error) {
+      pluginInstance.logger.error("处理手动输入失败:", error)
+      clearDoc()
+      tips = "处理手动输入失败，请重试"
+    } finally {
+      isDocsLoading = false
+    }
+  }
+
+  // 取消手动输入
+  const cancelManualInput = function () {
+    showManualInput = false
+    manualInputId = ""
   }
 
   const onTagsChange = async function () {
@@ -1554,6 +1717,25 @@ const initEditableContent = async () => {
       storeConfig.currentSql = currentSql
     }
 
+    // 初始化文档标题
+    if (storeConfig?.rootDocTitle) {
+      selectedDocTitle = storeConfig.rootDocTitle
+      pluginInstance.logger.info(`从配置加载文档标题: ${selectedDocTitle}`)
+    } else if (rootId && !selectedDocTitle) {
+      // 如果配置中没有标题但有rootId，尝试获取文档标题
+      try {
+        selectedDocTitle = await pluginInstance.kernelApi.getDocTitleById(rootId)
+        if (selectedDocTitle && selectedDocTitle !== "(未找到文档)" && selectedDocTitle !== "(获取失败)") {
+          // 保存获取到的标题到配置
+          storeConfig.rootDocTitle = selectedDocTitle
+          await pluginInstance.saveData(storeName, storeConfig)
+          pluginInstance.logger.info(`初始化时获取并保存文档标题: ${rootId} -> ${selectedDocTitle}`)
+        }
+      } catch (error) {
+        pluginInstance.logger.warn("初始化时获取文档标题失败:", error)
+      }
+    }
+
     // 初始化渐进模式
     if (storeConfig.reviewMode === "incremental") {
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
@@ -1680,12 +1862,87 @@ const initEditableContent = async () => {
                  {/if}
                </div>
              {:else if filterMode === FilterMode.Root}
-               <input
-                 class="b3-text-field fn__size150"
-                 bind:value={rootId}
-                 on:change={onRootIdChange}
-                 placeholder="输入根文档ID"
-               />
+               <div class="root-doc-selector">
+                 <button
+                   class="action-item b3-select fn__flex-center fn__size150"
+                   on:click={startDocumentSelection}
+                 >
+                   {currentDocTitle}
+                 </button>
+                 
+                 {#if showManualInput}
+                   <div class="manual-input-panel">
+                     <div class="input-header">
+                       <span class="input-title">输入文档ID</span>
+                       <button class="input-close" on:click={cancelManualInput}>✕</button>
+                     </div>
+                     <div class="input-content">
+                       <input
+                         class="b3-text-field manual-input"
+                         bind:value={manualInputId}
+                         placeholder="请输入文档ID..."
+                         on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                       />
+                       <div class="input-buttons">
+                         <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
+                         <button class="b3-button b3-button--outline input-btn" on:click={confirmManualInput}>确定</button>
+                       </div>
+                     </div>
+                   </div>
+                 {/if}
+                 
+                 {#if showDocSelector}
+                   <div class="doc-tree">
+                     {#if currentLevel === "notebooks"}
+                       <div class="tree-header">
+                         <span class="tree-title">选择笔记本</span>
+                         <button class="tree-manual-btn" on:click={switchToManualInput}>
+                           输入ID
+                         </button>
+                       </div>
+                       <div class="tree-content">
+                         {#each notebooks as notebook}
+                           <div 
+                             class="tree-item notebook-item" 
+                             on:click={() => selectNotebookForDoc(notebook)}
+                           >
+                             <span class="tree-icon">📚</span>
+                             <span class="tree-label">{notebook.name}</span>
+                             <span class="tree-arrow">▶</span>
+                           </div>
+                         {/each}
+                       </div>
+                     {:else if currentLevel === "docs"}
+                       <div class="tree-header">
+                         <button class="tree-back" on:click={backToNotebookSelection}>
+                           ← 返回
+                         </button>
+                         <span class="tree-title">{selectedNotebookForDoc?.name}</span>
+                         <button class="tree-manual-btn" on:click={switchToManualInput}>
+                           输入ID
+                         </button>
+                       </div>
+                       <div class="tree-content">
+                         {#if isDocsLoading}
+                           <div class="tree-loading">加载中...</div>
+                         {:else if rootDocsList.length > 0}
+                           {#each rootDocsList as doc}
+                             <div 
+                               class="tree-item doc-item" 
+                               on:click={() => selectDocument(doc.id, doc.title)}
+                             >
+                               <span class="tree-icon">📄</span>
+                               <span class="tree-label">{doc.title}</span>
+                             </div>
+                           {/each}
+                         {:else}
+                           <div class="tree-empty">该笔记本下没有根文档</div>
+                         {/if}
+                       </div>
+                     {/if}
+                   </div>
+                 {/if}
+               </div>
              {:else if filterMode === FilterMode.Tag}
                <div class="tag-selector">
                  <button
@@ -1865,12 +2122,87 @@ const initEditableContent = async () => {
                {/if}
              </div>
            {:else if filterMode === FilterMode.Root}
-             <input
-               class="b3-text-field fn__size150"
-               bind:value={rootId}
-               on:change={onRootIdChange}
-               placeholder="输入根文档ID"
-             />
+             <div class="root-doc-selector mobile-root-selector">
+               <button
+                 class="action-item b3-select fn__flex-center fn__size150"
+                 on:click={startDocumentSelection}
+               >
+                 {currentDocTitle}
+               </button>
+               
+               {#if showManualInput}
+                 <div class="manual-input-panel">
+                   <div class="input-header">
+                     <span class="input-title">输入文档ID</span>
+                     <button class="input-close" on:click={cancelManualInput}>✕</button>
+                   </div>
+                   <div class="input-content">
+                     <input
+                       class="b3-text-field manual-input"
+                       bind:value={manualInputId}
+                       placeholder="请输入文档ID..."
+                       on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                     />
+                     <div class="input-buttons">
+                       <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
+                       <button class="b3-button b3-button--outline input-btn" on:click={confirmManualInput}>确定</button>
+                     </div>
+                   </div>
+                 </div>
+               {/if}
+               
+               {#if showDocSelector}
+                 <div class="doc-tree">
+                   {#if currentLevel === "notebooks"}
+                     <div class="tree-header">
+                       <span class="tree-title">选择笔记本</span>
+                       <button class="tree-manual-btn" on:click={switchToManualInput}>
+                         输入ID
+                       </button>
+                     </div>
+                     <div class="tree-content">
+                       {#each notebooks as notebook}
+                         <div 
+                           class="tree-item notebook-item" 
+                           on:click={() => selectNotebookForDoc(notebook)}
+                         >
+                           <span class="tree-icon">📚</span>
+                           <span class="tree-label">{notebook.name}</span>
+                           <span class="tree-arrow">▶</span>
+                         </div>
+                       {/each}
+                     </div>
+                   {:else if currentLevel === "docs"}
+                     <div class="tree-header">
+                       <button class="tree-back" on:click={backToNotebookSelection}>
+                         ← 返回
+                       </button>
+                       <span class="tree-title">{selectedNotebookForDoc?.name}</span>
+                       <button class="tree-manual-btn" on:click={switchToManualInput}>
+                         输入ID
+                       </button>
+                     </div>
+                     <div class="tree-content">
+                       {#if isDocsLoading}
+                         <div class="tree-loading">加载中...</div>
+                       {:else if rootDocsList.length > 0}
+                         {#each rootDocsList as doc}
+                           <div 
+                             class="tree-item doc-item" 
+                             on:click={() => selectDocument(doc.id, doc.title)}
+                           >
+                             <span class="tree-icon">📄</span>
+                             <span class="tree-label">{doc.title}</span>
+                           </div>
+                         {/each}
+                       {:else}
+                         <div class="tree-empty">该笔记本下没有根文档</div>
+                       {/if}
+                     </div>
+                   {/if}
+                 </div>
+               {/if}
+             </div>
            {:else if filterMode === FilterMode.Tag}
              <div class="tag-selector mobile-tag-selector">
                <button
@@ -2587,6 +2919,29 @@ const initEditableContent = async () => {
       white-space: nowrap !important;
     }
 
+    /* 根文档选择器 - 关键修复：覆盖SiYuan全局CSS类fn__size150的固定宽度 */
+    .mobile-row-1 .root-doc-selector {
+      flex: 2 1 auto !important;
+      min-width: 120px !important;
+      max-width: none !important;
+      width: auto !important;
+    }
+
+    /* 强制覆盖SiYuan的fn__size150类（150px固定宽度），确保根文档选择器能正确伸缩 */
+    .mobile-row-1 .root-doc-selector .action-item,
+    .mobile-row-1 .root-doc-selector .fn__size150 {
+      height: 32px !important;
+      font-size: 12px !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: 1 !important;
+      padding: 4px 8px !important;
+      text-overflow: ellipsis !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+    }
+
      .mobile-row-1 .custom-sql {
        font-size: 10px;
        white-space: nowrap;
@@ -2730,6 +3085,191 @@ const initEditableContent = async () => {
     padding: 8px 12px;
     font-size: 13px;
     color: var(--b3-theme-on-surface);
+  }
+
+  /* 根文档选择器样式 - 树形结构 */
+  .root-doc-selector {
+    position: relative;
+    display: inline-block;
+  }
+    
+  .doc-tree {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-height: 400px;
+    width: 350px;
+    overflow: hidden;
+  }
+
+  .tree-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+    font-weight: 500;
+    font-size: 13px;
+    gap: 8px;
+  }
+
+  .tree-back {
+    background: none;
+    border: none;
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    
+    &:hover {
+      background-color: var(--b3-theme-primary-lighter);
+    }
+  }
+
+  .tree-title {
+    color: var(--b3-theme-on-surface);
+    flex: 1;
+  }
+
+  .tree-content {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+    
+  .tree-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    gap: 8px;
+    
+    &:hover {
+      background-color: var(--b3-list-hover);
+    }
+  }
+
+  .tree-icon {
+    font-size: 14px;
+    width: 16px;
+    text-align: center;
+  }
+
+  .tree-label {
+    flex: 1;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
+  }
+
+  .tree-arrow {
+    font-size: 10px;
+    color: var(--b3-theme-on-surface-light);
+  }
+
+  .tree-empty {
+    padding: 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .tree-loading {
+    padding: 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface);
+    font-size: 13px;
+  }
+
+  .tree-manual-btn {
+    background: none;
+    border: none;
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    
+    &:hover {
+      background-color: var(--b3-theme-primary-lighter);
+    }
+  }
+
+  /* 手动输入面板样式 */
+  .manual-input-panel {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    width: 350px;
+    overflow: hidden;
+  }
+
+  .input-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+    font-weight: 500;
+    font-size: 13px;
+  }
+
+  .input-title {
+    color: var(--b3-theme-on-surface);
+  }
+
+  .input-close {
+    background: none;
+    border: none;
+    color: var(--b3-theme-on-surface-light);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    
+    &:hover {
+      background-color: var(--b3-list-hover);
+    }
+  }
+
+  .input-content {
+    padding: 12px;
+  }
+
+  .manual-input {
+    width: 100%;
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .input-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .input-btn {
+    font-size: 12px;
+    padding: 4px 12px;
+    height: auto;
   }
 
   /* 默认隐藏关闭按钮 - 只在移动端显示 */

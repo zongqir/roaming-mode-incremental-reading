@@ -166,14 +166,42 @@
         <p style="margin: 0.5em 0;">如果漫游式渐进阅读对您的学习有所帮助，欢迎给作者点个赞或打赏一杯咖啡，这将鼓励作者持续优化和开发更多实用功能：</p>
         <div style="margin: 1em 0; text-align: center;">
             <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
-                 alt="打赏二维码"
+                 alt="桌面端打赏二维码"
                  style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <p style="margin: 0.5em 0; color: #666;">微信/支付宝</p>
+            <p style="margin: 0.5em 0; color: #666;">桌面端 - 微信/支付宝</p>
+        </div>
+        <div style="margin: 1em 0; text-align: center;">
+            <img src="https://i0.hdslb.com/bfs/openplatform/3b4d37a5285096d3493d09ca88280d9acf90129e.png@1e_1c.webp"
+                 alt="手机端喝茶收款码"
+                 style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <p style="margin: 0.5em 0; color: #666;">手机端 - 作者喝茶</p>
         </div>
     </div>
     <!-- 近期更新 -->
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 近期更新</h2>
+
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v3.0.0版本更新 (2025.9.13)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 重大更新</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📱 移动端版本</strong>: 完整支持移动端操作，优化触屏交互体验，适配各种屏幕尺寸</li>
+<li><strong>⚡ 性能大幅优化</strong>: 优化批量文档属性查询，减少SQL请求次数，提升文档加载和漫游推荐速度</li>
+<li><strong>🏷️ 基于标签的查询</strong>: 支持多标签筛选，灵活组合标签条件进行文档过滤，支持复合标签处理</li>
+<li><strong>🔧 修复自定义SQL查询</strong>: 解决自定义SQL模式下的查询错误和结果异常问题</li>
+<li><strong>📂 所见即所得的根目录浏览</strong>: 提供直观的文档树形选择界面，支持混合输入模式（树选择+直接输入）</li>
+<li><strong>🎨 图标更新</strong>: 更新为绿色小书本图标，更贴合插件功能定位</li>
+</ul>
+</li>
+<li style="margin: 0.3em 0;"><strong style="color: #f59e0b;">🔧 技术改进</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📊 缓存机制优化</strong>: 改进文档总数缓存机制，10分钟智能缓存，提升响应速度</li>
+<li><strong>📱 移动端UI适配</strong>: 全面优化移动端界面，调整按钮大小、间距和交互方式</li>
+<li><strong>🔍 标签处理逻辑</strong>: 完善标签查询逻辑，支持OR条件组合和复合标签解析</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
 
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v2.2.0版本更新 (2025.7.17)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">

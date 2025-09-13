@@ -41,6 +41,7 @@
 
   // props
   export let pluginInstance: RandomDocPlugin
+  export let dialog: any = null // 移动端弹窗实例，用于关闭弹窗和文档跳转
 
   // vars
   let isLoading = false
@@ -81,6 +82,9 @@
   let showPriorityDialog = false
   let priorityLoading = false
   let priorityList: any[] = []
+
+  // 移动端文档指标弹窗
+  let showMobileMetricsDialog = false // 移动端文档指标弹窗状态，解决移动端空间不足问题
 
   // 拖动排序相关
   let draggedItem: any = null
@@ -887,6 +891,16 @@
   function closePriorityDialog() {
     showPriorityDialog = false
   }
+
+  // 移动端文档指标弹窗
+  // 移动端文档指标弹窗控制 - 解决移动端屏幕空间不足，将指标内容移至独立弹窗
+  function openMobileMetricsDialog() {
+    showMobileMetricsDialog = true
+  }
+
+  function closeMobileMetricsDialog() {
+    showMobileMetricsDialog = false
+  }
   // 热力色条：优先级归一化，红-高，蓝-低
   function getHeatColor(priority: number, min: number, max: number) {
     if (max === min) return 'rgb(128,128,255)';
@@ -1415,132 +1429,291 @@ const initEditableContent = async () => {
         {title}
       </div>
     </div>
-    <div
-      class="protyle-wysiwyg protyle-wysiwyg--attr"
-      spellcheck="false"
-      style="padding: 16px 96px 281.5px;"
-      data-doc-type="NodeDocument"
-    >
-      <div class="action-btn-group">
-        <span class="filter-label">筛选:</span>
-        <select
-          bind:value={filterMode}
-          class="action-item b3-select fn__flex-center fn__size100"
-          on:change={onFilterModeChange}
-        >
-          <option value={FilterMode.Notebook}>笔记本</option>
-          <option value={FilterMode.Root}>根文档</option>
-        </select>
-        {#if filterMode === FilterMode.Notebook}
-          <div class="notebook-selector">
-            <button
-              class="action-item b3-select fn__flex-center fn__size150"
-              on:click={() => showNotebookSelector = !showNotebookSelector}
-            >
-              {#if selectedNotebooks.length === 0}
-                笔记本：请选择
-              {:else if selectedNotebooks.length === 1}
-                {getNotebookName(selectedNotebooks[0])}
-              {:else}
-                已选{selectedNotebooks.length}个笔记本
-              {/if}
-            </button>
-            {#if showNotebookSelector}
-              <div class="notebook-list">
-                {#each notebooks as notebook (notebook.id)}
-                  <label class="notebook-item">
-                    <input
-                      type="checkbox"
-                      checked={selectedNotebooks.includes(notebook.id)}
-                      on:change={() => toggleNotebook(notebook.id)}
-                    />
-                    {notebook.name}
-                  </label>
-                {/each}
-                <div class="confirm-button-container">
-                  <button
-                    class="b3-button b3-button--outline fn__size150"
-                    on:click={() => {
-                      showNotebookSelector = false;
-                      onNotebookChange();
-                    }}
-                  >
-                    确定
-                  </button>
-                </div>
-              </div>
+     <div
+       class="protyle-wysiwyg protyle-wysiwyg--attr"
+       spellcheck="false"
+       style="padding: 16px 96px 281.5px;"
+       data-doc-type="NodeDocument"
+     >
+       <!-- 关闭按钮 - 仅移动端显示 -->
+       <div class="close-button-container">
+         <button 
+           class="close-button"
+           on:click={() => {
+             if (dialog && typeof dialog.destroy === 'function') {
+               dialog.destroy()
+             } else {
+               // 备用方案：尝试通过DOM关闭
+               const dialogElement = document.querySelector('.b3-dialog__container')
+               if (dialogElement) {
+                 const closeBtn = dialogElement.querySelector('.b3-dialog__close')
+                 if (closeBtn && closeBtn instanceof HTMLElement) {
+                   closeBtn.click()
+                 }
+               }
+             }
+           }}
+           title="关闭"
+         >
+           ✕
+         </button>
+       </div>
+       <div class="action-btn-group">
+        <!-- 移动端专用布局 - 解决移动端按钮过大、布局混乱问题 -->
+        <div class="mobile-layout">
+          <!-- 第一行：筛选框 - 移动端优化布局，筛选元素独立一行 -->
+          <div class="mobile-row-1">
+             <select
+               bind:value={filterMode}
+               class="action-item b3-select fn__flex-center fn__size100"
+               on:change={onFilterModeChange}
+             >
+               <option value={FilterMode.Notebook}>笔记本</option>
+               <option value={FilterMode.Root}>根文档</option>
+             </select>
+             {#if filterMode === FilterMode.Notebook}
+               <div class="notebook-selector">
+                 <button
+                   class="action-item b3-select fn__flex-center fn__size150"
+                   on:click={() => showNotebookSelector = !showNotebookSelector}
+                 >
+                   {#if selectedNotebooks.length === 0}
+                     请选择
+                   {:else if selectedNotebooks.length === 1}
+                     {getNotebookName(selectedNotebooks[0])}
+                   {:else}
+                     已选{selectedNotebooks.length}个
+                   {/if}
+                 </button>
+                 {#if showNotebookSelector}
+                   <div class="notebook-list">
+                     {#each notebooks as notebook (notebook.id)}
+                       <label class="notebook-item">
+                         <input
+                           type="checkbox"
+                           checked={selectedNotebooks.includes(notebook.id)}
+                           on:change={() => toggleNotebook(notebook.id)}
+                         />
+                         {notebook.name}
+                       </label>
+                     {/each}
+                     <div class="confirm-button-container">
+                       <button
+                         class="b3-button b3-button--outline fn__size150"
+                         on:click={() => {
+                           showNotebookSelector = false;
+                           onNotebookChange();
+                         }}
+                       >
+                         确定
+                       </button>
+                     </div>
+                   </div>
+                 {/if}
+               </div>
+             {:else}
+               <input
+                 class="b3-text-field fn__size150"
+                 bind:value={rootId}
+                 on:change={onRootIdChange}
+                 placeholder="输入根文档ID"
+               />
+             {/if}
+             {#if storeConfig?.customSqlEnabled}
+               <select
+                 class="action-item b3-select fn__flex-center fn__size180 notebook-select"
+                 bind:value={currentSql}
+                 on:change={onSqlChange}
+               >
+                 {#if sqlList && sqlList.length > 0}
+                   {#each sqlList as s (s.sql)}
+                     <option value={s.sql}>{s.name}</option>
+                   {/each}
+                 {:else}
+                   <option value="">{pluginInstance.i18n.loading}...</option>
+                 {/if}
+               </select>
+               <span class="custom-sql">当前使用自定义 SQL 漫游</span>
             {/if}
-          </div>
-        {:else}
-          <input
-            class="b3-text-field fn__size150"
-            bind:value={rootId}
-            on:change={onRootIdChange}
-            placeholder="输入根文档ID"
-          />
-        {/if}
-        {#if storeConfig?.customSqlEnabled}
-          <select
-            class="action-item b3-select fn__flex-center fn__size180 notebook-select"
-            bind:value={currentSql}
-            on:change={onSqlChange}
-          >
-            {#if sqlList && sqlList.length > 0}
-              {#each sqlList as s (s.sql)}
-                <option value={s.sql}>{s.name}</option>
-              {/each}
-            {:else}
-              <option value="">{pluginInstance.i18n.loading}...</option>
-            {/if}
-          </select>
-          <span class="custom-sql">当前使用自定义 SQL 漫游</span>
-       {/if}
+           </div>
 
-              <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
-              <button
-                class="action-item b3-button primary-btn btn-small"
-                on:click={doIncrementalRandomDoc}
-                on:touchend|preventDefault={doIncrementalRandomDoc}
-                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-              >
-                继续漫游
-              </button>
-              <button
-                class="action-item b3-button primary-btn btn-small"
-                on:click={openDocEditor}
-                on:touchend|preventDefault={openDocEditor}
-                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-              >
-                打开该文档
-              </button>
-              <button
-                class="action-item b3-button b3-button--outline btn-small reset-button"
-                on:click={openVisitedDocs}
-                on:touchend|preventDefault={openVisitedDocs}
-                title="查看已漫游文档列表"
-                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-              >
-                已漫游文档
-              </button>
-              <button
-                class="action-item b3-button b3-button--outline btn-small"
-                on:click={openPriorityDialog}
-                on:touchend|preventDefault={openPriorityDialog}
-                title="优先级排序列表"
-                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-              >
-                优先级排序表
-              </button>
-              <button
-                class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
-                on:click={() => showSettingMenu(pluginInstance)}
-                on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
-                title={pluginInstance.i18n.setting}
-                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-              >
-                {@html icons.iconSetting}
-              </button>
-            </div>
+          <!-- 继续漫游按钮独立一行 - 按用户要求独立成行，占满整行宽度 -->
+          <div class="mobile-continue-row">
+             <button
+               class="action-item b3-button primary-btn btn-small continue-btn"
+               on:click={doIncrementalRandomDoc}
+               on:touchend|preventDefault={doIncrementalRandomDoc}
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               继续漫游
+             </button>
+           </div>
+
+          <!-- 第二行：功能按钮 - 文档指标 + 已漫游文档 + 优先级排序表 + 设置 -->
+          <div class="mobile-row-2">
+             <!-- 文档指标折叠按钮 -->
+             <div class="mobile-metrics-toggle" style="display: {currentRndId ? 'block' : 'none'};">
+               <button 
+                 class="action-item b3-button b3-button--outline btn-small"
+                 on:click={openMobileMetricsDialog}
+                 style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+               >
+                 文档指标
+               </button>
+             </div>
+             
+             <button
+               class="action-item b3-button b3-button--outline btn-small reset-button"
+               on:click={openVisitedDocs}
+               on:touchend|preventDefault={openVisitedDocs}
+               title="查看已漫游文档列表"
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               已漫游
+             </button>
+             <button
+               class="action-item b3-button b3-button--outline btn-small"
+               on:click={openPriorityDialog}
+               on:touchend|preventDefault={openPriorityDialog}
+               title="优先级排序列表"
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               优先级
+             </button>
+             <button
+               class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+               on:click={() => showSettingMenu(pluginInstance)}
+               on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+               title={pluginInstance.i18n.setting}
+               style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+             >
+               {@html icons.iconSetting}
+             </button>
+           </div>
+         </div>
+
+        <!-- 桌面端原有布局 - 保持原有桌面端布局不变 -->
+        <div class="desktop-layout">
+           <span class="filter-label">筛选:</span>
+           <select
+             bind:value={filterMode}
+             class="action-item b3-select fn__flex-center fn__size100"
+             on:change={onFilterModeChange}
+           >
+             <option value={FilterMode.Notebook}>笔记本</option>
+             <option value={FilterMode.Root}>根文档</option>
+           </select>
+           {#if filterMode === FilterMode.Notebook}
+             <div class="notebook-selector">
+               <button
+                 class="action-item b3-select fn__flex-center fn__size150"
+                 on:click={() => showNotebookSelector = !showNotebookSelector}
+               >
+                 {#if selectedNotebooks.length === 0}
+                   请选择
+                 {:else if selectedNotebooks.length === 1}
+                   {getNotebookName(selectedNotebooks[0])}
+                 {:else}
+                   已选{selectedNotebooks.length}个
+                 {/if}
+               </button>
+               {#if showNotebookSelector}
+                 <div class="notebook-list">
+                   {#each notebooks as notebook (notebook.id)}
+                     <label class="notebook-item">
+                       <input
+                         type="checkbox"
+                         checked={selectedNotebooks.includes(notebook.id)}
+                         on:change={() => toggleNotebook(notebook.id)}
+                       />
+                       {notebook.name}
+                     </label>
+                   {/each}
+                   <div class="confirm-button-container">
+                     <button
+                       class="b3-button b3-button--outline fn__size150"
+                       on:click={() => {
+                         showNotebookSelector = false;
+                         onNotebookChange();
+                       }}
+                     >
+                       确定
+                     </button>
+                   </div>
+                 </div>
+               {/if}
+             </div>
+           {:else}
+             <input
+               class="b3-text-field fn__size150"
+               bind:value={rootId}
+               on:change={onRootIdChange}
+               placeholder="输入根文档ID"
+             />
+           {/if}
+           {#if storeConfig?.customSqlEnabled}
+             <select
+               class="action-item b3-select fn__flex-center fn__size180 notebook-select"
+               bind:value={currentSql}
+               on:change={onSqlChange}
+             >
+               {#if sqlList && sqlList.length > 0}
+                 {#each sqlList as s (s.sql)}
+                   <option value={s.sql}>{s.name}</option>
+                 {/each}
+               {:else}
+                 <option value="">{pluginInstance.i18n.loading}...</option>
+               {/if}
+             </select>
+             <span class="custom-sql">当前使用自定义 SQL 漫游</span>
+          {/if}
+
+                 <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
+                 <button
+                   class="action-item b3-button primary-btn btn-small"
+                   on:click={doIncrementalRandomDoc}
+                   on:touchend|preventDefault={doIncrementalRandomDoc}
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   继续漫游
+                 </button>
+                 <button
+                   class="action-item b3-button primary-btn btn-small"
+                   on:click={openDocEditor}
+                   on:touchend|preventDefault={openDocEditor}
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   打开该文档
+                 </button>
+                 <button
+                   class="action-item b3-button b3-button--outline btn-small reset-button"
+                   on:click={openVisitedDocs}
+                   on:touchend|preventDefault={openVisitedDocs}
+                   title="查看已漫游文档列表"
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   已漫游文档
+                 </button>
+                 <button
+                   class="action-item b3-button b3-button--outline btn-small"
+                   on:click={openPriorityDialog}
+                   on:touchend|preventDefault={openPriorityDialog}
+                   title="优先级排序列表"
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   优先级排序表
+                 </button>
+                 <button
+                   class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+                   on:click={() => showSettingMenu(pluginInstance)}
+                   on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+                   title={pluginInstance.i18n.setting}
+                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+                 >
+                   {@html icons.iconSetting}
+                 </button>
+         </div>
+       </div>
 
       <!-- 已访问文档弹窗 -->
       {#if showVisitedDialog}
@@ -1573,13 +1746,38 @@ const initEditableContent = async () => {
         </div>
       {/if}
 
-      {#if showPriorityDialog}
-        <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
-        <div class="visited-dialog">
-          <div class="visited-dialog-header">
-            <span>优先级排序列表</span>
-            <button class="close-btn" on:click={closePriorityDialog}>×</button>
-          </div>
+       {#if showMobileMetricsDialog}
+         <div class="visited-dialog-mask" on:click={closeMobileMetricsDialog}></div>
+         <div class="visited-dialog">
+           <div class="visited-dialog-header">
+             <span>文档指标</span>
+             <button class="close-btn" on:click={closeMobileMetricsDialog}>×</button>
+           </div>
+           <div class="mobile-metrics-content">
+             {#if currentRndId}
+               <MetricsPanel
+                 pluginInstance={pluginInstance}
+                 docId={currentRndId}
+                 reviewer={pr}
+                 metrics={docMetrics}
+                 {docPriority}
+                 forceExpanded={true}
+                 on:priorityChange={handleMetricsPanelPriorityChange}
+               />
+             {:else}
+               <div>请先选择一个文档</div>
+             {/if}
+           </div>
+         </div>
+       {/if}
+
+       {#if showPriorityDialog}
+         <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
+         <div class="visited-dialog">
+           <div class="visited-dialog-header">
+             <span>优先级排序列表</span>
+             <button class="close-btn" on:click={closePriorityDialog}>×</button>
+           </div>
           <div class="visited-list">
             {#if priorityLoading}
               <div>加载中...</div>
@@ -1642,27 +1840,31 @@ const initEditableContent = async () => {
         </div>
       {/if}
 
-      {#if currentRndId}
-        <MetricsPanel
-          pluginInstance={pluginInstance}
-          docId={currentRndId}
-          reviewer={pr}
-          metrics={docMetrics}
-          {docPriority}
-          on:priorityChange={handleMetricsPanelPriorityChange}
-        />
-        <!-- 优先级分布点图 -->
-        <PriorityBarChart
-          points={priorityBarPoints}
-          currentId={currentRndId}
-          minPriority={priorityBarMin}
-          maxPriority={priorityBarMax}
-          height={48}
-          on:dragging={handlePriorityBarDragging}
-          on:change={handlePriorityBarChange}
-          on:openDocument={handleOpenDocument}
-        />
-      {/if}
+       <!-- 桌面端专用：文档指标和优先级图表 -->
+       <!-- 桌面端指标和图表组件 - 移动端隐藏，避免重复显示 -->
+      <div class="desktop-metrics-section">
+         {#if currentRndId}
+           <MetricsPanel
+             pluginInstance={pluginInstance}
+             docId={currentRndId}
+             reviewer={pr}
+             metrics={docMetrics}
+             {docPriority}
+             on:priorityChange={handleMetricsPanelPriorityChange}
+           />
+           <!-- 优先级分布点图 -->
+           <PriorityBarChart
+             points={priorityBarPoints}
+             currentId={currentRndId}
+             minPriority={priorityBarMin}
+             maxPriority={priorityBarMax}
+             height={48}
+             on:dragging={handlePriorityBarDragging}
+             on:change={handlePriorityBarChange}
+             on:openDocument={handleOpenDocument}
+           />
+         {/if}
+       </div>
 
       <div class="rnd-doc-custom-tips">
         <div
@@ -1945,56 +2147,189 @@ const initEditableContent = async () => {
     100% { transform: rotate(360deg); }
   }
 
-  /* 移动端适配 */
+   /* 默认隐藏移动端布局，显示桌面端布局 */
+   .mobile-layout {
+     display: none;
+   }
+   
+   .desktop-layout {
+     display: flex;
+     align-items: center;
+     flex-wrap: wrap;
+     gap: 5px;
+   }
+
+   /* 桌面端专用组件默认显示 */
+   .desktop-metrics-section {
+     display: block;
+   }
+
+  /* 移动端适配 - 解决移动端UI元素过大、布局混乱、按钮占用空间过多的问题 */
   @media (max-width: 768px) {
-    .protyle-content {
-      padding: 8px !important;
-    }
+     .protyle-content {
+       padding: 8px !important;
+     }
 
-    .protyle-title {
-      margin: 8px 16px !important;
-    }
+     .protyle-title {
+       margin: 8px 16px !important;
+     }
 
-    .protyle-wysiwyg {
-      padding: 8px 16px !important;
-    }
+     .protyle-wysiwyg {
+       padding: 8px 16px !important;
+     }
 
-    .action-btn-group {
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+     /* 关闭按钮样式 - 仅移动端显示 */
+     .close-button-container {
+       position: absolute;
+       top: 8px;
+       right: 8px;
+       z-index: 1000;
+       display: block !important;
+     }
 
-    .action-item {
-      min-width: auto;
-      flex: 1;
-      margin: 4px;
-      /* 确保触摸区域足够大 */
-      min-height: 44px;
-      touch-action: manipulation;
-    }
+     .close-button {
+       background: var(--b3-theme-surface);
+       border: 1px solid var(--b3-border-color);
+       border-radius: 8px;
+       width: 40px;
+       height: 40px;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       cursor: pointer;
+       font-size: 18px;
+       color: var(--b3-theme-on-surface);
+       transition: all 0.2s ease;
+       box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+     }
 
-    .btn-small {
-      padding: 8px 16px !important;
-      font-size: 16px !important;
-      height: 44px !important;
-      /* 移动端按钮优化 */
-      min-width: 100px;
-      border-radius: 8px;
-      font-weight: 500;
-    }
+     .close-button:hover {
+       background: var(--b3-theme-error);
+       color: white;
+       border-color: var(--b3-theme-error);
+       transform: scale(1.05);
+     }
 
-    .visited-dialog, .priority-dialog {
-      width: 95% !important;
-      max-width: none !important;
-      margin: 20px auto;
-    }
+     /* 移动端显示移动端布局，隐藏桌面端布局 */
+     .mobile-layout {
+       display: block !important;
+     }
+     
+     .desktop-layout {
+       display: none !important;
+     }
 
-    .visited-dialog-content, .priority-dialog-content {
-      max-height: 60vh;
-    }
-  }
+    /* 移动端第一行布局 - 筛选元素独立一行，优化空间分配 */
+    .mobile-row-1 {
+       display: flex;
+       align-items: center;
+       gap: 6px;
+       margin-bottom: 8px;
+       flex-wrap: wrap;
+     }
 
-  @media (max-width: 480px) {
+     /* 第一个筛选框固定宽度，为笔记本选择器让出空间 */
+     .mobile-row-1 .b3-select {
+       flex: 0 0 auto !important;
+       width: 70px !important;
+       height: 32px;
+       font-size: 12px;
+       min-width: 70px !important;
+       max-width: 70px !important;
+     }
+
+     .mobile-row-1 .b3-text-field {
+       flex: 1;
+       height: 32px;
+       font-size: 12px;
+       min-width: 80px;
+     }
+
+     /* 笔记本选择器 - 关键修复：覆盖SiYuan全局CSS类fn__size150的固定宽度 */
+     .mobile-row-1 .notebook-selector {
+       flex: 2 1 auto !important;
+       min-width: 120px !important;
+       max-width: none !important;
+       width: auto !important;
+     }
+
+     /* 强制覆盖SiYuan的fn__size150类（150px固定宽度），确保笔记本选择器能正确伸缩 */
+     .mobile-row-1 .notebook-selector .action-item,
+     .mobile-row-1 .notebook-selector .fn__size150 {
+       height: 32px !important;
+       font-size: 12px !important;
+       width: 100% !important;
+       min-width: 0 !important;
+       max-width: none !important;
+       flex: 1 !important;
+       padding: 4px 8px !important;
+       text-overflow: ellipsis !important;
+       overflow: hidden !important;
+       white-space: nowrap !important;
+     }
+
+     .mobile-row-1 .custom-sql {
+       font-size: 10px;
+       white-space: nowrap;
+       flex: 0 0 auto;
+     }
+
+     /* 继续漫游按钮独立一行 - 按用户要求占满整行，提升点击体验 */
+     .mobile-continue-row {
+       display: flex;
+       margin-bottom: 8px;
+     }
+
+     .mobile-continue-row .continue-btn {
+       width: 100%;
+       height: 36px;
+       font-size: 14px;
+       padding: 8px;
+     }
+
+     /* 移动端第二行布局 */
+     .mobile-row-2 {
+       display: flex;
+       gap: 4px;
+       align-items: center;
+     }
+
+     .mobile-row-2 button,
+     .mobile-row-2 .mobile-metrics-toggle {
+       flex: 1;
+       height: 32px;
+       font-size: 11px;
+       padding: 4px 2px;
+       min-width: 0;
+       text-align: center;
+     }
+
+     .mobile-row-2 .mobile-metrics-toggle button {
+       width: 100%;
+       height: 100%;
+       font-size: 11px;
+       padding: 4px 2px;
+     }
+
+
+     /* 隐藏移动端的剩余文档数量提示信息 */
+     .rnd-doc-custom-tips {
+       display: none !important;
+     }
+
+     /* 隐藏移动端的桌面端专用组件 */
+     .desktop-metrics-section {
+       display: none !important;
+     }
+
+     .visited-dialog {
+       width: 95% !important;
+       max-width: none !important;
+       margin: 20px auto;
+     }
+   }
+
+ @media (max-width: 480px) {
     .protyle-title .protyle-title__input {
       font-size: 18px !important;
     }
@@ -2018,4 +2353,10 @@ const initEditableContent = async () => {
       width: 100%;
     }
   }
+
+  /* 默认隐藏关闭按钮 - 只在移动端显示 */
+  .close-button-container {
+    display: none;
+  }
+
 </style>

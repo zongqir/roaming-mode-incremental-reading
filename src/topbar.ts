@@ -128,6 +128,7 @@ export const showMobileRoamingDialog = (pluginInstance: RandomDocPlugin) => {
     target: document.getElementById(roamingId) as HTMLElement,
     props: {
       pluginInstance: pluginInstance,
+      dialog: d,  // 传递弹窗实例，支持组件内关闭弹窗和文档跳转
     },
   })
 }

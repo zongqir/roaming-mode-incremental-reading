@@ -36,6 +36,7 @@
   export let metrics: Metric[] = []
   export let totalPriority: number = 0
   export let docPriority: { [key: string]: number } = {}
+  export let forceExpanded: boolean = false  // 强制展开模式，用于移动端弹窗 - 移动端空间有限，弹窗内默认展开
 
   // state
   let docMetrics: Map<string, number> = new Map()
@@ -46,9 +47,19 @@
   let roamingLastTime: string = ""
   let editingPriority: boolean = false
   let priorityInputValue: string = ""
+  
+  // 可折叠状态 - 移动端默认折叠节省空间，但弹窗模式强制展开
+  let isCollapsed: boolean = forceExpanded ? false : (typeof window !== 'undefined' && window.innerWidth <= 768)
 
   function setPriorityInput(val: number) {
     priorityInputValue = val.toFixed(2)
+  }
+
+  // 折叠切换 - 强制展开模式禁用折叠功能
+  function toggleCollapse() {
+    if (!forceExpanded) {
+      isCollapsed = !isCollapsed
+    }
   }
 
   function increasePriority() {
@@ -404,25 +415,27 @@
 </script>
 
 <div class="metrics-panel">
-  <div class="metrics-title">
-    <h3>文档指标</h3>
+  <div class="metrics-title" on:click={toggleCollapse} style="cursor: {forceExpanded ? 'default' : 'pointer'};">
+    <h3>文档指标 {forceExpanded ? '' : (isCollapsed ? '▼' : '▲')}</h3>
     <div class="priority-edit-row">
       <span class="priority-label">优先级</span>
       <div class="priority-edit-group">
-        <button class="priority-btn" on:click={decreasePriority}>-</button>
+        <button class="priority-btn" on:click|stopPropagation={decreasePriority}>-</button>
         <input id="priority-input" type="number" min="0" max="10" step="0.01"
           bind:value={priorityInputValue}
           on:blur={handlePriorityInput}
           on:keydown={(e) => e.key === 'Enter' && handlePriorityInput()}
           on:input={handleInputStep}
+          on:click|stopPropagation
           class="priority-input"
         />
-        <button class="priority-btn" on:click={increasePriority}>+</button>
+        <button class="priority-btn" on:click|stopPropagation={increasePriority}>+</button>
       </div>
     </div>
   </div>
   
-  {#if isLoading}
+  {#if !isCollapsed}
+    {#if isLoading}
     <div class="loading-message">
       正在加载指标数据...
     </div>
@@ -472,6 +485,7 @@
         上次访问：{roamingLastTime}
       </div>
     </div>
+  {/if}
   {/if}
 </div>
 

@@ -26,6 +26,7 @@ export enum ReviewMode {
 export enum FilterMode {
   Notebook = "notebook",
   Root = "root",
+  Tag = "tag",
 }
 
 /**

@@ -51,6 +51,10 @@
   let showNotebookSelector = false // 控制下拉框显示
   let filterMode = FilterMode.Notebook
   let rootId = ""
+  let selectedTags: string[] = []
+  let availableTags: string[] = []
+  let isTagsLoading = false
+  let showTagDropdown = false
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
   let currentRndId
@@ -337,8 +341,13 @@
    * 渐进模式下的文档漫游
    */
   export const doIncrementalRandomDoc = async () => {
-    // 每次漫游前强制刷新配置，确保概率配置为最新
-    storeConfig = await pluginInstance.safeLoad(storeName)
+    console.log("🚀 doIncrementalRandomDoc 被调用！")
+    console.log("📋 当前 storeConfig:", storeConfig)
+    console.log("🏷️ 当前 selectedTags:", selectedTags)
+    console.log("🔄 当前 filterMode:", filterMode)
+    
+    // 确保使用当前的最新配置，而不是重新读取存储中的配置
+    // 这样可以避免前端修改后立即执行时配置不同步的问题
     isLoading = true
     title = "漫游中..."
     content = ""
@@ -394,6 +403,15 @@
       }
       
       pluginInstance.logger.info(`已漫游到文档: ${currentRndId}`)
+      
+      // 记录文档漫游次数
+      try {
+        await pr.incrementRoamingCount(currentRndId)
+        pluginInstance.logger.info(`已记录文档 ${currentRndId} 的漫游访问`)
+      } catch (error) {
+        pluginInstance.logger.error(`记录文档漫游失败: ${error.message}`)
+        // 即使记录失败也继续执行，不影响文档显示
+      }
       
       try {
         // 获取文档块信息
@@ -510,13 +528,7 @@
         tips = `展卷乃无言的情意：以${selectionProbabilityText}的机遇，穿越星辰遇见你，三秋霜雪印马蹄。${total}篇文档已剩${remainingCount}。`
       }
       
-      // 增加文档的漫游次数
-      try {
-        await pr.incrementRoamingCount(currentRndId)
-      } catch (error) {
-        pluginInstance.logger.error("增加漫游次数失败:", error)
-        // 不影响主要功能，只记录错误
-      }
+      // 🚫 移除重复的漫游次数更新 - 已在上方统一处理
       
     } catch (e) {
       pluginInstance.logger.error("渐进复习出错:", e)
@@ -642,13 +654,13 @@
       
       tips = `展卷乃无言的情意：穿越星辰遇见你，三秋霜雪印马蹄。正在漫游指定文档。`
       
-      // 增加文档的漫游次数
+      // 记录文档漫游次数
       try {
         if (pr) {
           await pr.incrementRoamingCount(currentRndId)
         }
       } catch (error) {
-        pluginInstance.logger.error("增加漫游次数失败:", error)
+        pluginInstance.logger.error("记录文档漫游失败:", error)
         // 不影响主要功能，只记录错误
       }
       
@@ -1120,7 +1132,36 @@
     pluginInstance.logger.info("storeConfig saved currentSql =>", storeConfig)
   }
 
+  // 初始化配置数据
+  const initializeConfig = async function () {
+    if (storeConfig && storeConfig.tags) {
+      // 兼容处理：将字符串格式的tags转换为数组格式
+      if (typeof storeConfig.tags === 'string') {
+        selectedTags = storeConfig.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        // 更新配置为数组格式
+        storeConfig.tags = selectedTags
+        await pluginInstance.saveData(storeName, storeConfig)
+      } else if (Array.isArray(storeConfig.tags)) {
+        selectedTags = [...storeConfig.tags]
+      }
+    }
+  }
+
   const onFilterModeChange = async function () {
+    // 详细日志：记录切换前后的状态
+    console.log("🔄 筛选模式切换开始")
+    console.log("📋 当前前端filterMode:", filterMode)
+    console.log("📋 当前storeConfig.filterMode:", storeConfig?.filterMode)
+    console.log("📋 FilterMode.Tag 值:", FilterMode.Tag)
+    console.log("📋 是否等于标签模式:", filterMode === FilterMode.Tag)
+    
+    pluginInstance.logger.info("🔄 筛选模式切换开始", {
+      "前端filterMode": filterMode,
+      "切换前storeConfig.filterMode": storeConfig.filterMode,
+      "切换前storeConfig.notebookId": storeConfig.notebookId,
+      "切换前storeConfig.tags": storeConfig.tags
+    })
+    
     // 模式切换
     storeConfig.filterMode = filterMode
     await pluginInstance.saveData(storeName, storeConfig)
@@ -1128,9 +1169,31 @@
     // 重置文档
     clearDoc()
     
+    // 清除所有缓存，确保新模式不会使用旧模式的缓存数据
+    IncrementalReviewer.clearAllCache()
+    pluginInstance.logger.info("筛选模式切换，已清除所有缓存")
+    
+    // 🎯 关键修复：如果切换到标签模式，自动加载可用标签
+    if (filterMode === FilterMode.Tag) {
+      try {
+        await loadAvailableTags()
+      } catch (error) {
+        console.error("❌ 自动加载标签失败:", error)
+      }
+    }
+    
     // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
     if (storeConfig.reviewMode === "incremental") {
       pluginInstance.logger.info("筛选模式变更后重新初始化渐进模式...")
+      
+      // 详细日志：记录传递给IncrementalReviewer的配置
+      pluginInstance.logger.info("🔧 创建新IncrementalReviewer，配置为:", {
+        "filterMode": storeConfig.filterMode,
+        "notebookId": storeConfig.notebookId,
+        "rootId": storeConfig.rootId,
+        "tags": storeConfig.tags
+      })
+      
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
       
@@ -1138,7 +1201,7 @@
       await doIncrementalRandomDoc()
     }
     
-    pluginInstance.logger.info("storeConfig saved filterMode =>", storeConfig)
+    pluginInstance.logger.info("✅ storeConfig saved filterMode =>", storeConfig)
   }
 
   const onRootIdChange = async function () {
@@ -1160,6 +1223,95 @@
     }
     
     pluginInstance.logger.info("storeConfig saved rootId =>", storeConfig)
+  }
+
+  // 获取所有可用标签
+  const loadAvailableTags = async function () {
+    if (isTagsLoading) return
+    
+    isTagsLoading = true
+    showTagDropdown = true
+    
+    try {
+      // 确保 pr 实例存在，如果不存在则创建一个
+      if (!pr) {
+        pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      }
+      
+      availableTags = await pr.getAllAvailableTags()
+      pluginInstance.logger.info("成功加载标签列表", availableTags)
+    } catch (error) {
+      pluginInstance.logger.error("加载可用标签失败:", error)
+      availableTags = []
+    } finally {
+      isTagsLoading = false
+    }
+  }
+
+  // 切换标签选择
+  const toggleTag = function (tag: string) {
+    console.log("🏷️ toggleTag被调用 - 标签:", tag)
+    console.log("📋 点击前selectedTags:", selectedTags)
+    const index = selectedTags.indexOf(tag)
+    console.log("🔍 标签在数组中的索引:", index)
+    
+    if (index > -1) {
+      selectedTags = selectedTags.filter(t => t !== tag)
+      console.log("❌ 移除标签后:", selectedTags)
+    } else {
+      selectedTags = [...selectedTags, tag]
+      console.log("✅ 添加标签后:", selectedTags)
+    }
+    console.log("📊 最终selectedTags数量:", selectedTags.length)
+    // 移除自动保存，改为点击确定按钮时保存
+  }
+
+  // 关闭标签下拉框
+  const closeTagDropdown = function () {
+    showTagDropdown = false
+  }
+
+  // 确定标签选择
+  const confirmTagSelection = function () {
+    showTagDropdown = false
+    // 触发标签变更保存
+    onTagsChange()
+  }
+
+  // 全部取消标签选择
+  const clearAllTags = function () {
+    selectedTags = []
+    // 立即触发保存和更新
+    onTagsChange()
+  }
+
+  const onTagsChange = async function () {
+    console.log("🔄 onTagsChange 被调用")
+    console.log("📋 当前 selectedTags:", selectedTags)
+    console.log("🏷️ selectedTags 类型:", typeof selectedTags)
+    console.log("📊 Array.isArray(selectedTags):", Array.isArray(selectedTags))
+    
+    // 保存标签配置
+    storeConfig.tags = selectedTags
+    console.log("💾 保存到 storeConfig.tags:", storeConfig.tags)
+    await pluginInstance.saveData(storeName, storeConfig)
+    
+    // 重置文档
+    clearDoc()
+    
+    // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
+    if (storeConfig.reviewMode === "incremental") {
+      console.log("🔄 标签变更后重新初始化渐进模式...")
+      pluginInstance.logger.info("标签变更后重新初始化渐进模式...")
+      pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      await pr.initIncrementalConfig()
+      
+      console.log("🚀 即将调用 doIncrementalRandomDoc")
+      // 自动开始新的漫游，避免用户手动点击
+      await doIncrementalRandomDoc()
+    }
+    
+    pluginInstance.logger.info("storeConfig saved tags =>", storeConfig)
   }
 
   const openDocEditor = async () => {
@@ -1375,6 +1527,21 @@ const initEditableContent = async () => {
     }
     filterMode = storeConfig.filterMode
     rootId = storeConfig?.rootId ?? ""
+    // 处理标签数据，确保数组格式正确
+    if (storeConfig?.tags) {
+      if (Array.isArray(storeConfig.tags)) {
+        selectedTags = [...storeConfig.tags]
+      } else if (typeof storeConfig.tags === 'string') {
+        // 兼容旧的字符串格式
+        selectedTags = storeConfig.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        // 更新配置为数组格式
+        storeConfig.tags = selectedTags
+      } else {
+        selectedTags = []
+      }
+    } else {
+      selectedTags = []
+    }
 
     // 处理自定义 sql
     if (storeConfig?.customSqlEnabled) {
@@ -1468,9 +1635,10 @@ const initEditableContent = async () => {
                class="action-item b3-select fn__flex-center fn__size100"
                on:change={onFilterModeChange}
              >
-               <option value={FilterMode.Notebook}>笔记本</option>
-               <option value={FilterMode.Root}>根文档</option>
-             </select>
+            <option value={FilterMode.Notebook}>笔记本</option>
+            <option value={FilterMode.Root}>根文档</option>
+            <option value={FilterMode.Tag}>标签</option>
+          </select>
              {#if filterMode === FilterMode.Notebook}
                <div class="notebook-selector">
                  <button
@@ -1511,13 +1679,65 @@ const initEditableContent = async () => {
                    </div>
                  {/if}
                </div>
-             {:else}
+             {:else if filterMode === FilterMode.Root}
                <input
                  class="b3-text-field fn__size150"
                  bind:value={rootId}
                  on:change={onRootIdChange}
                  placeholder="输入根文档ID"
                />
+             {:else if filterMode === FilterMode.Tag}
+               <div class="tag-selector">
+                 <button
+                   class="action-item b3-select fn__flex-center fn__size150"
+                   on:click={loadAvailableTags}
+                 >
+                   {#if selectedTags.length === 0}
+                     请选择标签
+                   {:else if selectedTags.length === 1}
+                     {selectedTags[0]}
+                   {:else}
+                     已选{selectedTags.length}个标签
+                   {/if}
+                 </button>
+                 
+                 {#if showTagDropdown && !isTagsLoading}
+                   <div class="tag-list">
+                     {#if availableTags.length > 0}
+                       {#each availableTags as tag}
+                         <label class="tag-item">
+                           <input
+                             type="checkbox"
+                             checked={selectedTags.includes(tag)}
+                             on:change={() => toggleTag(tag)}
+                           />
+                           #{tag}
+                         </label>
+                       {/each}
+                     {:else}
+                       <div class="tag-empty">没有找到标签</div>
+                     {/if}
+                     <div class="confirm-button-container">
+                       <button
+                         class="b3-button b3-button--outline clear-all-btn"
+                         on:click={clearAllTags}
+                       >
+                         全部取消
+                       </button>
+                       <button
+                         class="b3-button b3-button--outline confirm-btn"
+                         on:click={confirmTagSelection}
+                       >
+                         确定
+                       </button>
+                     </div>
+                   </div>
+                 {/if}
+                 
+                 {#if isTagsLoading}
+                   <div class="tag-loading">加载中...</div>
+                 {/if}
+               </div>
              {/if}
              {#if storeConfig?.customSqlEnabled}
                <select
@@ -1600,9 +1820,10 @@ const initEditableContent = async () => {
              class="action-item b3-select fn__flex-center fn__size100"
              on:change={onFilterModeChange}
            >
-             <option value={FilterMode.Notebook}>笔记本</option>
-             <option value={FilterMode.Root}>根文档</option>
-           </select>
+            <option value={FilterMode.Notebook}>笔记本</option>
+            <option value={FilterMode.Root}>根文档</option>
+            <option value={FilterMode.Tag}>标签</option>
+          </select>
            {#if filterMode === FilterMode.Notebook}
              <div class="notebook-selector">
                <button
@@ -1643,13 +1864,65 @@ const initEditableContent = async () => {
                  </div>
                {/if}
              </div>
-           {:else}
+           {:else if filterMode === FilterMode.Root}
              <input
                class="b3-text-field fn__size150"
                bind:value={rootId}
                on:change={onRootIdChange}
                placeholder="输入根文档ID"
              />
+           {:else if filterMode === FilterMode.Tag}
+             <div class="tag-selector mobile-tag-selector">
+               <button
+                 class="action-item b3-select fn__flex-center fn__size150"
+                 on:click={loadAvailableTags}
+               >
+                 {#if selectedTags.length === 0}
+                   请选择标签
+                 {:else if selectedTags.length === 1}
+                   {selectedTags[0]}
+                 {:else}
+                   已选{selectedTags.length}个标签
+                 {/if}
+               </button>
+               
+               {#if showTagDropdown && !isTagsLoading}
+                 <div class="tag-list">
+                   {#if availableTags.length > 0}
+                     {#each availableTags as tag}
+                       <label class="tag-item">
+                         <input
+                           type="checkbox"
+                           checked={selectedTags.includes(tag)}
+                           on:change={() => toggleTag(tag)}
+                         />
+                         #{tag}
+                       </label>
+                     {/each}
+                   {:else}
+                     <div class="tag-empty">没有找到标签</div>
+                   {/if}
+                   <div class="confirm-button-container">
+                     <button
+                       class="b3-button b3-button--outline clear-all-btn"
+                       on:click={clearAllTags}
+                     >
+                       全部取消
+                     </button>
+                     <button
+                       class="b3-button b3-button--outline confirm-btn"
+                       on:click={confirmTagSelection}
+                     >
+                       确定
+                     </button>
+                   </div>
+                 </div>
+               {/if}
+               
+               {#if isTagsLoading}
+                 <div class="tag-loading">加载中...</div>
+               {/if}
+             </div>
            {/if}
            {#if storeConfig?.customSqlEnabled}
              <select
@@ -2001,7 +2274,30 @@ const initEditableContent = async () => {
   .confirm-button-container
     display: flex
     justify-content: center
+    gap: 8px
     margin-top: 8px
+
+  .clear-all-btn
+    background-color: var(--b3-theme-surface) !important
+    color: var(--b3-theme-on-surface) !important
+    border-color: var(--b3-theme-surface-light) !important
+    font-size: 12px !important
+    padding: 4px 8px !important
+    min-width: 60px !important
+    
+    &:hover
+      background-color: var(--b3-theme-surface-light) !important
+      
+  .confirm-btn
+    background-color: var(--b3-theme-primary) !important
+    color: white !important
+    border-color: var(--b3-theme-primary) !important
+    font-size: 12px !important
+    padding: 4px 8px !important
+    min-width: 50px !important
+    
+    &:hover
+      background-color: var(--b3-theme-primary-light) !important
 
   .content-area
     cursor: pointer
@@ -2268,6 +2564,29 @@ const initEditableContent = async () => {
        white-space: nowrap !important;
      }
 
+    /* 标签选择器 - 关键修复：覆盖SiYuan全局CSS类fn__size150的固定宽度 */
+    .mobile-row-1 .tag-selector {
+      flex: 2 1 auto !important;
+      min-width: 120px !important;
+      max-width: none !important;
+      width: auto !important;
+    }
+
+    /* 强制覆盖SiYuan的fn__size150类（150px固定宽度），确保标签选择器能正确伸缩 */
+    .mobile-row-1 .tag-selector .action-item,
+    .mobile-row-1 .tag-selector .fn__size150 {
+      height: 32px !important;
+      font-size: 12px !important;
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: 1 !important;
+      padding: 4px 8px !important;
+      text-overflow: ellipsis !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+    }
+
      .mobile-row-1 .custom-sql {
        font-size: 10px;
        white-space: nowrap;
@@ -2352,6 +2671,65 @@ const initEditableContent = async () => {
     .b3-select {
       width: 100%;
     }
+  }
+
+  /* 标签选择器样式 - 完全参照笔记本选择器 */
+  .tag-selector {
+    position: relative;
+    display: inline-block;
+  }
+    
+  .tag-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    padding: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    width: 200px;
+  }
+    
+  .tag-item {
+    display: block;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 13px;
+    border-radius: 4px;
+    color: var(--b3-theme-primary);
+    
+    &:hover {
+      background-color: var(--b3-list-hover);
+    }
+      
+    input {
+      margin-right: 8px;
+    }
+  }
+
+  .tag-empty {
+    padding: 8px 12px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .tag-loading {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 101;
+    background: var(--b3-theme-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--b3-theme-on-surface);
   }
 
   /* 默认隐藏关闭按钮 - 只在移动端显示 */

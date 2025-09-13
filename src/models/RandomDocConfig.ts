@@ -58,6 +58,8 @@ export enum FilterMode {
   Notebook = "notebook",
   /** 1.2.2 按根文档过滤 */
   Root = "root",
+  /** 1.2.3 按标签过滤 */
+  Tag = "tag",
 }
 
 /**
@@ -70,6 +72,7 @@ class RandomDocConfig {
    * 当过滤模式为Notebook时使用的笔记本ID
    */
   public notebookId: string
+
 
   /**
    * 2.3 是否启用自定义SQL
@@ -106,6 +109,12 @@ class RandomDocConfig {
    * 当过滤模式为Root时使用的根文档ID
    */
   rootId = ""
+
+  /**
+   * 2.9 标签列表
+   * 当过滤模式为Tag时使用的标签数组，支持多选
+   */
+  tags: string[] = []
 
   /**
    * 2.9 渐进模式配置ID

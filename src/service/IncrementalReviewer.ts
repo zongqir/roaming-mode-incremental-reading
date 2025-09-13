@@ -358,26 +358,35 @@ class IncrementalReviewer {
    * @returns 文档总数
    */
   public async getTotalDocCount(config?: RandomDocConfig): Promise<number> {
+    console.log("📊 getTotalDocCount 被调用")
     try {
       // 3.2.1 使用传入的配置或当前最新配置
       const targetConfig = config || this.storeConfig
+      console.log("🎯 使用的配置:", targetConfig)
+      console.log("🏷️ 配置中的标签:", targetConfig.tags)
+      console.log("📋 配置中的筛选模式:", targetConfig.filterMode)
       
       // 3.2.2 生成缓存键并尝试从缓存获取
       const cacheKey = this.generateCacheKey(targetConfig)
+      console.log("🔑 生成的缓存键:", cacheKey)
       const cachedCount = this.getFromCache(cacheKey)
       
       if (cachedCount !== null) {
+        console.log("🎯 命中缓存，返回:", cachedCount)
         // 命中缓存，直接返回
         return cachedCount
       }
       
+      console.log("❌ 缓存未命中，开始构建SQL")
       // 3.2.3 缓存未命中，执行SQL查询
       const filterCondition = this.buildFilterCondition(targetConfig)
+      console.log("🔍 构建的筛选条件:", filterCondition)
       const sql = `
         SELECT COUNT(id) as total FROM blocks 
         WHERE type = 'd' 
         ${filterCondition}
       `
+      console.log("📝 最终SQL查询:", sql)
       
       this.pluginInstance.logger.info(`缓存未命中，执行SQL查询: ${cacheKey}`)
       
@@ -1004,6 +1013,67 @@ class IncrementalReviewer {
   }
 
   /**
+   * 4.5 获取所有可用标签
+   * 从数据库中获取所有存在的标签，用于下拉选择
+   */
+  public async getAllAvailableTags(): Promise<string[]> {
+    try {
+      const sql = `SELECT tag FROM blocks WHERE tag IS NOT NULL AND tag != "" GROUP BY tag ORDER BY tag`
+      const result = await this.pluginInstance.kernelApi.sql(sql)
+      
+      // 检查返回结果格式
+      if (result.code !== 0) {
+        this.pluginInstance.logger.error(`SQL执行失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        return []
+      }
+      
+      const actualData = result.data || []
+      
+      if (actualData && actualData.length > 0) {
+        // 处理标签数据，包括复合标签（如 "#展开# #练习#"）
+        const allTags = new Set<string>()
+        
+        actualData.forEach((row) => {
+          const tagValue = row.tag
+          if (tagValue) {
+            // 拆分复合标签（多个标签用空格分隔）
+            const individualTags = tagValue.split(/\s+/).filter(t => t.trim().length > 0)
+            
+            individualTags.forEach(tag => {
+              // 去除 # 前后缀，返回纯标签名
+              let cleanTag = tag.trim()
+              
+              if (cleanTag.startsWith('#')) {
+                cleanTag = cleanTag.substring(1)
+              }
+              if (cleanTag.endsWith('#')) {
+                cleanTag = cleanTag.substring(0, cleanTag.length - 1)
+              }
+              
+              if (cleanTag.length > 0) {
+                allTags.add(cleanTag)
+              }
+            })
+          }
+        })
+        
+        const tags = Array.from(allTags).sort()
+        this.pluginInstance.logger.info(`获取到 ${tags.length} 个可用标签`)
+        return tags
+      } else {
+        return []
+      }
+      
+    } catch (error) {
+      console.error("❌ getAllAvailableTags 发生错误:", error)
+      console.error("❌ 错误详情:", error.message)
+      console.error("❌ 错误堆栈:", error.stack)
+      this.pluginInstance.logger.error("获取可用标签失败", error)
+      return []
+    }
+  }
+
+  /**
    * 5. 轮盘赌算法
    */
   
@@ -1378,11 +1448,21 @@ class IncrementalReviewer {
     const filterMode = config.filterMode || FilterMode.Notebook
     const notebookId = config.notebookId || ""
     const rootId = config.rootId || ""
+    const tags = config.tags || []
     
-    if (filterMode === FilterMode.Notebook && notebookId) {
+    // 为每种模式生成唯一的缓存键，即使参数为空也要区分模式
+    if (filterMode === FilterMode.Notebook) {
       return `notebook:${notebookId}`
-    } else if (filterMode === FilterMode.Root && rootId) {
+    } else if (filterMode === FilterMode.Root) {
       return `root:${rootId}`
+    } else if (filterMode === FilterMode.Tag) {
+      if (Array.isArray(tags) && tags.length > 0) {
+        // 对标签进行排序以确保缓存键一致性
+        const sortedTags = tags.filter(tag => tag && tag.trim().length > 0).sort().join(',')
+        return `tag:${sortedTags}`
+      } else {
+        return `tag:empty` // 标签模式但无标签内容
+      }
     }
     
     return "all" // 默认所有文档
@@ -1440,23 +1520,92 @@ class IncrementalReviewer {
     // 7.1.1 使用传入的配置或当前实例的最新配置
     const targetConfig = config || this.storeConfig
     
-    // 7.1.2 从配置中获取过滤模式和相关ID
+    // 7.1.2 从配置中获取过滤模式和相关参数
     const filterMode = targetConfig.filterMode || FilterMode.Notebook
     const notebookId = targetConfig.notebookId || ""
     const rootId = targetConfig.rootId || ""
+    const tags = targetConfig.tags || []
+    
+    // 详细日志：记录当前使用的配置
+    this.pluginInstance.logger.info("🏗️ buildFilterCondition 使用的配置:", {
+      "是否传入config": !!config,
+      "最终使用的filterMode": filterMode,
+      "最终使用的notebookId": notebookId,
+      "最终使用的rootId": rootId,
+      "最终使用的tags": tags,
+      "实例this.storeConfig": {
+        "filterMode": this.storeConfig.filterMode,
+        "notebookId": this.storeConfig.notebookId,
+        "rootId": this.storeConfig.rootId,
+        "tags": this.storeConfig.tags
+      }
+    })
 
     let condition = ""
-    if (filterMode === FilterMode.Notebook && notebookId) {
-      // 处理多个笔记本ID的情况
-      const notebookIds = notebookId.split(',')
-      if (notebookIds.length > 0) {
-        const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
-        condition = `AND box IN (${quotedIds})`
-        this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+    
+    // 根据筛选模式严格匹配，防止模式切换时的交叉干扰
+    if (filterMode === FilterMode.Notebook) {
+      // 笔记本模式 - 仅当有笔记本ID时应用过滤
+      if (notebookId) {
+        const notebookIds = notebookId.split(',')
+        if (notebookIds.length > 0) {
+          const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
+          condition = `AND box IN (${quotedIds})`
+          this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+        }
+      } else {
+        this.pluginInstance.logger.info(`笔记本模式但无笔记本ID，不应用过滤条件`)
       }
-    } else if (filterMode === FilterMode.Root && rootId) {
-      this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
-      condition = `AND path LIKE '%${rootId}%'`
+    } else if (filterMode === FilterMode.Root) {
+      // 根文档模式 - 仅当有根文档ID时应用过滤
+      if (rootId) {
+        condition = `AND path LIKE '%${rootId}%'`
+        this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
+      } else {
+        this.pluginInstance.logger.info(`根文档模式但无根文档ID，不应用过滤条件`)
+      }
+    } else if (filterMode === FilterMode.Tag) {
+      console.log("🏷️ 进入标签过滤模式")
+      console.log("📋 传入的tags参数:", tags)
+      console.log("🔍 tags类型:", typeof tags)
+      console.log("📊 Array.isArray(tags):", Array.isArray(tags))
+      
+      // 标签模式 - 仅当有标签时应用过滤
+      if (tags && Array.isArray(tags) && tags.length > 0) {
+        console.log("✅ 标签数组非空，开始处理")
+        // 直接使用数组，不需要split操作
+        const tagList = tags.filter(tag => tag && tag.trim().length > 0)
+        console.log("🧹 过滤后的标签列表:", tagList)
+        
+        if (tagList.length > 0) {
+          console.log("🔨 开始构建标签条件")
+          // 找到包含指定标签的文档（通过root_id关联）
+          // 标签格式：#标签名#
+          const tagConditions = tagList.map(tag => {
+            // 确保标签格式为 #标签名#
+            let formattedTag = tag.trim()
+            if (!formattedTag.startsWith('#')) {
+              formattedTag = '#' + formattedTag
+            }
+            if (!formattedTag.endsWith('#')) {
+              formattedTag = formattedTag + '#'
+            }
+            const sqlCondition = `id IN (SELECT DISTINCT root_id FROM blocks WHERE tag = '${formattedTag}' AND root_id IS NOT NULL AND root_id != '')`
+            console.log(`🎯 标签 "${tag}" → 格式化为 "${formattedTag}" → SQL: ${sqlCondition}`)
+            return sqlCondition
+          })
+          condition = `AND (${tagConditions.join(' OR ')})`
+          console.log("🏗️ 最终标签筛选条件:", condition)
+          this.pluginInstance.logger.info(`应用标签过滤(OR逻辑)，查找包含任一标签的文档，标签列表: ${tagList.join(', ')}`)
+        } else {
+          console.log("⚠️ 标签模式但过滤后标签列表为空")
+          this.pluginInstance.logger.info(`标签模式但标签列表为空，显示所有文档`)
+        }
+      } else {
+        console.log("❌ 标签模式但无有效标签内容")
+        console.log("📋 tags:", tags)
+        this.pluginInstance.logger.info(`标签模式但无标签内容，显示所有文档`)
+      }
     }
     
     return condition

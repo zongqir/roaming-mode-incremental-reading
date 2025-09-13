@@ -38,6 +38,7 @@
   import type { DocPriorityData } from "../models/IncrementalConfig"
   import type { DocBasicInfo } from "../models/IncrementalConfig"
   import type { Metric } from "../models/IncrementalConfig"
+  import { isLocked, toggleLock } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -67,6 +68,7 @@
   let manualInputId = "" // 手动输入的ID
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
+  
   let currentRndId
   let unReviewedCount = 0
   let content = ""
@@ -1617,6 +1619,7 @@
 
   // 处理内容编辑
   const handleContentEdit = (event: Event) => {
+    if ($isLocked) return; // 锁定状态下不处理编辑
     const target = event.target as HTMLElement;
     editableContent = target.innerHTML;
     debouncedSave(editableContent);
@@ -1778,12 +1781,12 @@ const initEditableContent = async () => {
         {title}
       </div>
     </div>
-     <div
-       class="protyle-wysiwyg protyle-wysiwyg--attr"
-       spellcheck="false"
-       style="padding: 16px 96px 281.5px;"
-       data-doc-type="NodeDocument"
-     >
+    <div
+      class="protyle-wysiwyg protyle-wysiwyg--attr"
+      spellcheck="false"
+      style="padding: 16px 96px 281.5px;"
+      data-doc-type="NodeDocument"
+    >
        <!-- 关闭按钮 - 仅移动端显示 -->
        <div class="close-button-container">
          <button 
@@ -1807,15 +1810,23 @@ const initEditableContent = async () => {
            ✕
          </button>
        </div>
-       <div class="action-btn-group">
+      <div class="action-btn-group">
         <!-- 移动端专用布局 - 解决移动端按钮过大、布局混乱问题 -->
         <div class="mobile-layout">
           <!-- 第一行：筛选框 - 移动端优化布局，筛选元素独立一行 -->
           <div class="mobile-row-1">
+             <button class="mobile-lock-btn" on:click={toggleLock} title={$isLocked ? '点击解锁编辑' : '点击锁定编辑'}>
+               {#if $isLocked}
+                 🔒
+               {:else}
+                 🔓
+               {/if}
+             </button>
              <select
                bind:value={filterMode}
                class="action-item b3-select fn__flex-center fn__size100"
                on:change={onFilterModeChange}
+               disabled={$isLocked}
              >
             <option value={FilterMode.Notebook}>笔记本</option>
             <option value={FilterMode.Root}>根文档</option>
@@ -1882,6 +1893,8 @@ const initEditableContent = async () => {
                          bind:value={manualInputId}
                          placeholder="请输入文档ID..."
                          on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                         disabled={$isLocked}
+                         readonly={$isLocked}
                        />
                        <div class="input-buttons">
                          <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
@@ -2071,56 +2084,66 @@ const initEditableContent = async () => {
 
         <!-- 桌面端原有布局 - 保持原有桌面端布局不变 -->
         <div class="desktop-layout">
-           <span class="filter-label">筛选:</span>
-           <select
-             bind:value={filterMode}
-             class="action-item b3-select fn__flex-center fn__size100"
-             on:change={onFilterModeChange}
-           >
-            <option value={FilterMode.Notebook}>笔记本</option>
-            <option value={FilterMode.Root}>根文档</option>
-            <option value={FilterMode.Tag}>标签</option>
-          </select>
-           {#if filterMode === FilterMode.Notebook}
-             <div class="notebook-selector">
-               <button
-                 class="action-item b3-select fn__flex-center fn__size150"
-                 on:click={() => showNotebookSelector = !showNotebookSelector}
-               >
-                 {#if selectedNotebooks.length === 0}
-                   请选择
-                 {:else if selectedNotebooks.length === 1}
-                   {getNotebookName(selectedNotebooks[0])}
-                 {:else}
-                   已选{selectedNotebooks.length}个
-                 {/if}
-               </button>
-               {#if showNotebookSelector}
-                 <div class="notebook-list">
-                   {#each notebooks as notebook (notebook.id)}
-                     <label class="notebook-item">
-                       <input
-                         type="checkbox"
-                         checked={selectedNotebooks.includes(notebook.id)}
-                         on:change={() => toggleNotebook(notebook.id)}
-                       />
-                       {notebook.name}
-                     </label>
-                   {/each}
-                   <div class="confirm-button-container">
-                     <button
-                       class="b3-button b3-button--outline fn__size150"
-                       on:click={() => {
-                         showNotebookSelector = false;
-                         onNotebookChange();
-                       }}
-                     >
-                       确定
-                     </button>
-                   </div>
-                 </div>
+           <div class="filter-header">
+        <span class="filter-label">筛选:</span>
+             <button class="lock-btn" on:click={toggleLock} title={$isLocked ? '点击解锁编辑' : '点击锁定编辑'}>
+               {#if $isLocked}
+                 🔒
+               {:else}
+                 🔓
                {/if}
-             </div>
+             </button>
+           </div>
+        <select
+          bind:value={filterMode}
+          class="action-item b3-select fn__flex-center fn__size100"
+          on:change={onFilterModeChange}
+             disabled={$isLocked}
+        >
+          <option value={FilterMode.Notebook}>笔记本</option>
+          <option value={FilterMode.Root}>根文档</option>
+            <option value={FilterMode.Tag}>标签</option>
+        </select>
+        {#if filterMode === FilterMode.Notebook}
+          <div class="notebook-selector">
+            <button
+              class="action-item b3-select fn__flex-center fn__size150"
+              on:click={() => showNotebookSelector = !showNotebookSelector}
+            >
+              {#if selectedNotebooks.length === 0}
+                   请选择
+              {:else if selectedNotebooks.length === 1}
+                {getNotebookName(selectedNotebooks[0])}
+              {:else}
+                   已选{selectedNotebooks.length}个
+              {/if}
+            </button>
+            {#if showNotebookSelector}
+              <div class="notebook-list">
+                {#each notebooks as notebook (notebook.id)}
+                  <label class="notebook-item">
+                    <input
+                      type="checkbox"
+                      checked={selectedNotebooks.includes(notebook.id)}
+                      on:change={() => toggleNotebook(notebook.id)}
+                    />
+                    {notebook.name}
+                  </label>
+                {/each}
+                <div class="confirm-button-container">
+                  <button
+                    class="b3-button b3-button--outline fn__size150"
+                    on:click={() => {
+                      showNotebookSelector = false;
+                      onNotebookChange();
+                    }}
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            {/if}
+          </div>
            {:else if filterMode === FilterMode.Root}
              <div class="root-doc-selector mobile-root-selector">
                <button
@@ -2142,6 +2165,8 @@ const initEditableContent = async () => {
                        bind:value={manualInputId}
                        placeholder="请输入文档ID..."
                        on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+                       disabled={$isLocked}
+                       readonly={$isLocked}
                      />
                      <div class="input-buttons">
                        <button class="b3-button input-btn" on:click={cancelManualInput}>取消</button>
@@ -2195,7 +2220,7 @@ const initEditableContent = async () => {
                              <span class="tree-label">{doc.title}</span>
                            </div>
                          {/each}
-                       {:else}
+        {:else}
                          <div class="tree-empty">该笔记本下没有根文档</div>
                        {/if}
                      </div>
@@ -2223,7 +2248,7 @@ const initEditableContent = async () => {
                    {#if availableTags.length > 0}
                      {#each availableTags as tag}
                        <label class="tag-item">
-                         <input
+          <input
                            type="checkbox"
                            checked={selectedTags.includes(tag)}
                            on:change={() => toggleTag(tag)}
@@ -2255,70 +2280,70 @@ const initEditableContent = async () => {
                  <div class="tag-loading">加载中...</div>
                {/if}
              </div>
-           {/if}
-           {#if storeConfig?.customSqlEnabled}
-             <select
-               class="action-item b3-select fn__flex-center fn__size180 notebook-select"
-               bind:value={currentSql}
-               on:change={onSqlChange}
-             >
-               {#if sqlList && sqlList.length > 0}
-                 {#each sqlList as s (s.sql)}
-                   <option value={s.sql}>{s.name}</option>
-                 {/each}
-               {:else}
-                 <option value="">{pluginInstance.i18n.loading}...</option>
-               {/if}
-             </select>
-             <span class="custom-sql">当前使用自定义 SQL 漫游</span>
-          {/if}
+        {/if}
+        {#if storeConfig?.customSqlEnabled}
+          <select
+            class="action-item b3-select fn__flex-center fn__size180 notebook-select"
+            bind:value={currentSql}
+            on:change={onSqlChange}
+          >
+            {#if sqlList && sqlList.length > 0}
+              {#each sqlList as s (s.sql)}
+                <option value={s.sql}>{s.name}</option>
+              {/each}
+            {:else}
+              <option value="">{pluginInstance.i18n.loading}...</option>
+            {/if}
+          </select>
+          <span class="custom-sql">当前使用自定义 SQL 漫游</span>
+       {/if}
 
-                 <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
-                 <button
-                   class="action-item b3-button primary-btn btn-small"
-                   on:click={doIncrementalRandomDoc}
-                   on:touchend|preventDefault={doIncrementalRandomDoc}
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   继续漫游
-                 </button>
-                 <button
-                   class="action-item b3-button primary-btn btn-small"
-                   on:click={openDocEditor}
-                   on:touchend|preventDefault={openDocEditor}
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   打开该文档
-                 </button>
-                 <button
-                   class="action-item b3-button b3-button--outline btn-small reset-button"
-                   on:click={openVisitedDocs}
-                   on:touchend|preventDefault={openVisitedDocs}
-                   title="查看已漫游文档列表"
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   已漫游文档
-                 </button>
-                 <button
-                   class="action-item b3-button b3-button--outline btn-small"
-                   on:click={openPriorityDialog}
-                   on:touchend|preventDefault={openPriorityDialog}
-                   title="优先级排序列表"
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   优先级排序表
-                 </button>
-                 <button
-                   class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
-                   on:click={() => showSettingMenu(pluginInstance)}
-                   on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
-                   title={pluginInstance.i18n.setting}
-                   style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
-                 >
-                   {@html icons.iconSetting}
-                 </button>
+              <!-- 操作按钮区域，无论是否启用自定义SQL都显示 -->
+              <button
+                class="action-item b3-button primary-btn btn-small"
+                on:click={doIncrementalRandomDoc}
+                on:touchend|preventDefault={doIncrementalRandomDoc}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                继续漫游
+              </button>
+              <button
+                class="action-item b3-button primary-btn btn-small"
+                on:click={openDocEditor}
+                on:touchend|preventDefault={openDocEditor}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                打开该文档
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small reset-button"
+                on:click={openVisitedDocs}
+                on:touchend|preventDefault={openVisitedDocs}
+                title="查看已漫游文档列表"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                已漫游文档
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small"
+                on:click={openPriorityDialog}
+                on:touchend|preventDefault={openPriorityDialog}
+                title="优先级排序列表"
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                优先级排序表
+              </button>
+              <button
+                class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+                on:click={() => showSettingMenu(pluginInstance)}
+                on:touchend|preventDefault={() => showSettingMenu(pluginInstance)}
+                title={pluginInstance.i18n.setting}
+                style="touch-action: manipulation; -webkit-tap-highlight-color: transparent;"
+              >
+                {@html icons.iconSetting}
+              </button>
          </div>
-       </div>
+            </div>
 
       <!-- 已访问文档弹窗 -->
       {#if showVisitedDialog}
@@ -2371,18 +2396,18 @@ const initEditableContent = async () => {
                />
              {:else}
                <div>请先选择一个文档</div>
-             {/if}
-           </div>
-         </div>
-       {/if}
+            {/if}
+          </div>
+        </div>
+      {/if}
 
-       {#if showPriorityDialog}
-         <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
-         <div class="visited-dialog">
-           <div class="visited-dialog-header">
-             <span>优先级排序列表</span>
-             <button class="close-btn" on:click={closePriorityDialog}>×</button>
-           </div>
+      {#if showPriorityDialog}
+        <div class="visited-dialog-mask" on:click={closePriorityDialog}></div>
+        <div class="visited-dialog">
+          <div class="visited-dialog-header">
+            <span>优先级排序列表</span>
+            <button class="close-btn" on:click={closePriorityDialog}>×</button>
+          </div>
           <div class="visited-list">
             {#if priorityLoading}
               <div>加载中...</div>
@@ -2448,27 +2473,27 @@ const initEditableContent = async () => {
        <!-- 桌面端专用：文档指标和优先级图表 -->
        <!-- 桌面端指标和图表组件 - 移动端隐藏，避免重复显示 -->
       <div class="desktop-metrics-section">
-         {#if currentRndId}
-           <MetricsPanel
-             pluginInstance={pluginInstance}
-             docId={currentRndId}
-             reviewer={pr}
-             metrics={docMetrics}
-             {docPriority}
-             on:priorityChange={handleMetricsPanelPriorityChange}
-           />
-           <!-- 优先级分布点图 -->
-           <PriorityBarChart
-             points={priorityBarPoints}
-             currentId={currentRndId}
-             minPriority={priorityBarMin}
-             maxPriority={priorityBarMax}
-             height={48}
-             on:dragging={handlePriorityBarDragging}
-             on:change={handlePriorityBarChange}
-             on:openDocument={handleOpenDocument}
-           />
-         {/if}
+      {#if currentRndId}
+        <MetricsPanel
+          pluginInstance={pluginInstance}
+          docId={currentRndId}
+          reviewer={pr}
+          metrics={docMetrics}
+          {docPriority}
+          on:priorityChange={handleMetricsPanelPriorityChange}
+        />
+        <!-- 优先级分布点图 -->
+        <PriorityBarChart
+          points={priorityBarPoints}
+          currentId={currentRndId}
+          minPriority={priorityBarMin}
+          maxPriority={priorityBarMax}
+          height={48}
+          on:dragging={handlePriorityBarDragging}
+          on:change={handlePriorityBarChange}
+          on:openDocument={handleOpenDocument}
+        />
+      {/if}
        </div>
 
       <div class="rnd-doc-custom-tips">
@@ -2481,6 +2506,16 @@ const initEditableContent = async () => {
           <div class="protyle-attr" contenteditable="false" />
         </div>
       </div>
+      {#if $isLocked}
+        <div 
+          class="editable-content-area content-locked"
+          contenteditable="false"
+          spellcheck="false"
+          style="opacity: 0.7; cursor: not-allowed; user-select: none; pointer-events: none;"
+        >
+          {@html editableContent}
+        </div>
+      {:else}
       <div 
         class="editable-content-area"
         contenteditable="true"
@@ -2497,6 +2532,7 @@ const initEditableContent = async () => {
         }}
         on:focus={() => isEditing = true}
       ></div>
+      {/if}
     </div>
   </div>
 </div>
@@ -2524,6 +2560,60 @@ const initEditableContent = async () => {
     font-size 13px
     margin-left 2px
     margin-right 2px
+
+  .filter-header
+    display flex
+    align-items center
+    gap 8px
+
+  .lock-btn
+    background none
+    border none
+    cursor pointer
+    font-size 14px
+    padding 2px 4px
+    border-radius 3px
+    opacity 0.7
+    transition opacity 0.2s ease, background-color 0.2s ease
+
+  .lock-btn:hover
+    opacity 1
+    background-color var(--b3-theme-surface-light)
+
+  .mobile-lock-btn
+    background none
+    border none
+    cursor pointer
+    font-size 14px
+    padding 2px 4px
+    border-radius 3px
+    opacity 0.7
+    transition opacity 0.2s ease, background-color 0.2s ease
+    height 32px
+    width 32px
+    flex 0 0 auto
+
+  .mobile-lock-btn:hover
+    opacity 1
+    background-color var(--b3-theme-surface-light)
+
+  .content-locked
+    background-color var(--b3-theme-surface-light)
+    border 1px dashed var(--b3-border-color)
+    border-radius 4px
+    position relative
+
+  .content-locked::before
+    content "🔒 内容已锁定"
+    position absolute
+    top 8px
+    right 8px
+    background-color var(--b3-theme-background)
+    padding 2px 8px
+    border-radius 4px
+    font-size 12px
+    color var(--b3-theme-on-surface-light)
+    z-index 1
     
   .btn-small
     padding: 4px 8px
@@ -2794,17 +2884,17 @@ const initEditableContent = async () => {
 
   /* 移动端适配 - 解决移动端UI元素过大、布局混乱、按钮占用空间过多的问题 */
   @media (max-width: 768px) {
-     .protyle-content {
-       padding: 8px !important;
-     }
+    .protyle-content {
+      padding: 8px !important;
+    }
 
-     .protyle-title {
-       margin: 8px 16px !important;
-     }
+    .protyle-title {
+      margin: 8px 16px !important;
+    }
 
-     .protyle-wysiwyg {
-       padding: 8px 16px !important;
-     }
+    .protyle-wysiwyg {
+      padding: 8px 16px !important;
+    }
 
      /* 关闭按钮样式 - 仅移动端显示 */
      .close-button-container {
@@ -2853,7 +2943,7 @@ const initEditableContent = async () => {
        align-items: center;
        gap: 6px;
        margin-bottom: 8px;
-       flex-wrap: wrap;
+      flex-wrap: wrap;
      }
 
      /* 第一个筛选框固定宽度，为笔记本选择器让出空间 */
@@ -2867,7 +2957,7 @@ const initEditableContent = async () => {
      }
 
      .mobile-row-1 .b3-text-field {
-       flex: 1;
+      flex: 1;
        height: 32px;
        font-size: 12px;
        min-width: 80px;
@@ -2888,7 +2978,7 @@ const initEditableContent = async () => {
        font-size: 12px !important;
        width: 100% !important;
        min-width: 0 !important;
-       max-width: none !important;
+      max-width: none !important;
        flex: 1 !important;
        padding: 4px 8px !important;
        text-overflow: ellipsis !important;
@@ -3000,10 +3090,10 @@ const initEditableContent = async () => {
        width: 95% !important;
        max-width: none !important;
        margin: 20px auto;
-     }
-   }
+    }
+  }
 
- @media (max-width: 480px) {
+  @media (max-width: 480px) {
     .protyle-title .protyle-title__input {
       font-size: 18px !important;
     }

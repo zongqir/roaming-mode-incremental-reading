@@ -6,6 +6,7 @@
   import { showMessage, Dialog } from "siyuan"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import type { Metric } from "../models/IncrementalConfig"
+  import { isLocked, toggleLock } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -48,6 +49,7 @@
 
   let activeTab = 0;
   const tabList = ["基本配置", "文档指标配置", "批量优先级重置"];
+  
 
   const onSaveSetting = async () => {
     try {
@@ -424,9 +426,18 @@
 
 <div class="random-doc-setting">
   <div class="config__tab-header">
-    {#each tabList as tab, idx}
-      <div class="tab-item {activeTab === idx ? 'active' : ''}" on:click={() => activeTab = idx}>{tab}</div>
-    {/each}
+    <div class="tab-items">
+      {#each tabList as tab, idx}
+        <div class="tab-item {activeTab === idx ? 'active' : ''}" on:click={() => activeTab = idx}>{tab}</div>
+      {/each}
+    </div>
+    <button class="lock-btn" on:click={toggleLock} title={$isLocked ? '点击解锁编辑' : '点击锁定编辑'}>
+      {#if $isLocked}
+        🔒
+      {:else}
+        🔓
+      {/if}
+    </button>
   </div>
   <div class="config__tab-container">
     {#if activeTab === 0}
@@ -448,6 +459,8 @@
                     if (String(absolutePriorityProb) === '' || isNaN(Number(absolutePriorityProb))) absolutePriorityProb = 0;
                     else absolutePriorityProb = Math.max(0, Math.min(1, Number(absolutePriorityProb)));
                   }}
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
               </div>
               <p class="help-text">设置为0则禁用，设置为0.2表示20%的概率直接漫游优先级最高的未访问文档。范围0~1。</p>
@@ -460,6 +473,7 @@
                 <input
                   type="checkbox"
                   bind:checked={autoResetOnStartup}
+                  disabled={$isLocked}
                 />
                 开启后，每次启动自动清空已访问文档记录
               </label>
@@ -472,6 +486,7 @@
                 <input
                   type="checkbox"
                   bind:checked={customSqlEnabled}
+                  disabled={$isLocked}
                 />
                 启用后可自定义SQL筛选文档
               </label>
@@ -487,6 +502,8 @@
                   bind:value={sqlContent}
                   rows="4"
                   placeholder={pluginInstance.i18n.sqlContentTip}
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
                 <p class="help-text">{pluginInstance.i18n.sqlContentTip}</p>
               </div>
@@ -524,11 +541,13 @@
                           value={metric.weight.toFixed(0)} 
                           min="1" 
                           on:change={(e) => updateMetricWeight(metric.id, parseFloat(e.currentTarget.value))}
+                          disabled={$isLocked}
+                          readonly={$isLocked}
                         />
                       </td>
                       <td>{metric.description || "-"}</td>
                       <td>
-                        <button class="delete-button" on:click={() => removeMetric(metric.id)}>删除</button>
+                        <button class="delete-button" on:click={() => removeMetric(metric.id)} disabled={$isLocked}>删除</button>
                       </td>
                     </tr>
                   {/each}
@@ -546,6 +565,8 @@
                   id="newMetricId" 
                   bind:value={newMetric.id} 
                   placeholder="ID"
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
               </div>
               <div class="form-group small-group">
@@ -555,6 +576,8 @@
                   id="newMetricName" 
                   bind:value={newMetric.name} 
                   placeholder="名称"
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
               </div>
               <div class="form-group tiny-group">
@@ -565,6 +588,8 @@
                   bind:value={newMetric.weight} 
                   min="1" 
                   max="100"
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
               </div>
               <div class="form-group">
@@ -574,10 +599,12 @@
                   id="newMetricDescription" 
                   bind:value={newMetric.description} 
                   placeholder="简短描述"
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
               </div>
               <div class="form-group button-group">
-                <button class="add-button" on:click={addMetric}>添加</button>
+                <button class="add-button" on:click={addMetric} disabled={$isLocked}>添加</button>
               </div>
             </div>
           </div>
@@ -618,6 +645,8 @@
                     min="0" 
                     max="10" 
                     step="0.01"
+                    disabled={$isLocked}
+                    readonly={$isLocked}
                   />
                 </div>
                 <div class="range-input-group">
@@ -629,6 +658,8 @@
                     min="0" 
                     max="10" 
                     step="0.01"
+                    disabled={$isLocked}
+                    readonly={$isLocked}
                   />
                 </div>
               </div>
@@ -648,6 +679,8 @@
                     min="0" 
                     max="10" 
                     step="0.01"
+                    disabled={$isLocked}
+                    readonly={$isLocked}
                   />
                 </div>
                 <div class="range-input-group">
@@ -659,6 +692,8 @@
                     min="0" 
                     max="10" 
                     step="0.01"
+                    disabled={$isLocked}
+                    readonly={$isLocked}
                   />
                 </div>
               </div>
@@ -675,7 +710,7 @@
                   <div class="progress-bar" style="width: {batchResetProgress}%"></div>
                 </div>
               {:else}
-                <button class="reset-button" on:click={batchRandomResetPriority} disabled={isProcessingBatchReset}>开始重置</button>
+                <button class="reset-button" on:click={batchRandomResetPriority} disabled={isProcessingBatchReset || $isLocked}>开始重置</button>
               {/if}
             </div>
           </div>
@@ -696,7 +731,7 @@
                       <div class="progress-bar" style="width: {clearDataProgress}%"></div>
                     </div>
                   {:else}
-                    <button class="clear-data-button" on:click={clearAllDocumentData} disabled={isProcessingClearData}>清空所有数据</button>
+                    <button class="clear-data-button" on:click={clearAllDocumentData} disabled={isProcessingClearData || $isLocked}>清空所有数据</button>
                   {/if}
                 </div>
               </div>
@@ -905,8 +940,45 @@
 
   .config__tab-header {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     border-bottom: 1px solid var(--b3-border-color);
     margin-bottom: 12px;
+  }
+
+  .tab-items {
+    display: flex;
+  }
+
+  .lock-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+    margin-left: auto;
+  }
+
+  .lock-btn:hover {
+    opacity: 1;
+    background-color: var(--b3-theme-surface-light);
+  }
+
+  /* 禁用状态样式 */
+  input:disabled,
+  textarea:disabled,
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  input:readonly,
+  textarea:readonly {
+    background-color: var(--b3-theme-surface-light);
+    color: var(--b3-theme-on-surface-light);
   }
   .tab-item {
     padding: 8px 24px;

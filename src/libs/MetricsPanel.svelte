@@ -28,6 +28,7 @@
   import RandomDocPlugin from "../index"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import type { Metric } from "../models/IncrementalConfig"
+  import { isLocked, toggleLock } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -63,6 +64,7 @@
   }
 
   function increasePriority() {
+    if ($isLocked) return
     let v = parseFloat(priorityInputValue)
     if (isNaN(v)) v = totalPriority
     v = Math.min(10, v + 1)
@@ -70,6 +72,7 @@
     handlePriorityInput()
   }
   function decreasePriority() {
+    if ($isLocked) return
     let v = parseFloat(priorityInputValue)
     if (isNaN(v)) v = totalPriority
     v = Math.max(0, v - 1)
@@ -416,11 +419,20 @@
 
 <div class="metrics-panel">
   <div class="metrics-title" on:click={toggleCollapse} style="cursor: {forceExpanded ? 'default' : 'pointer'};">
-    <h3>文档指标 {forceExpanded ? '' : (isCollapsed ? '▼' : '▲')}</h3>
+    <div class="title-left">
+      <h3>文档指标 {forceExpanded ? '' : (isCollapsed ? '▼' : '▲')}</h3>
+      <button class="lock-btn" on:click|stopPropagation={toggleLock} title={$isLocked ? '点击解锁编辑' : '点击锁定编辑'}>
+        {#if $isLocked}
+          🔒
+        {:else}
+          🔓
+        {/if}
+      </button>
+    </div>
     <div class="priority-edit-row">
       <span class="priority-label">优先级</span>
       <div class="priority-edit-group">
-        <button class="priority-btn" on:click|stopPropagation={decreasePriority}>-</button>
+        <button class="priority-btn" on:click|stopPropagation={decreasePriority} disabled={$isLocked}>-</button>
         <input id="priority-input" type="number" min="0" max="10" step="0.01"
           bind:value={priorityInputValue}
           on:blur={handlePriorityInput}
@@ -428,8 +440,10 @@
           on:input={handleInputStep}
           on:click|stopPropagation
           class="priority-input"
+          disabled={$isLocked}
+          readonly={$isLocked}
         />
-        <button class="priority-btn" on:click|stopPropagation={increasePriority}>+</button>
+        <button class="priority-btn" on:click|stopPropagation={increasePriority} disabled={$isLocked}>+</button>
       </div>
     </div>
   </div>
@@ -562,6 +576,39 @@
     margin: 0;
     font-size: 14px;
     color: var(--b3-theme-on-surface);
+  }
+
+  .title-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lock-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+  }
+
+  .lock-btn:hover {
+    opacity: 1;
+    background-color: var(--b3-theme-surface-light);
+  }
+
+  .priority-btn:disabled,
+  .priority-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .priority-input:readonly {
+    background-color: var(--b3-theme-surface-light);
+    color: var(--b3-theme-on-surface-light);
   }
   
 

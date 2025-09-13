@@ -29,8 +29,20 @@
 
 import { writable } from 'svelte/store';
 
-// 全局锁定状态 - 默认不锁定，允许直接编辑
-export const isLocked = writable<boolean>(true);
+/**
+ * 检测当前环境是否为移动端
+ * @returns 是否为移动端环境
+ */
+function isMobileEnv(): boolean {
+  if (typeof window !== 'undefined') {
+    // 通过屏幕宽度判断是否为移动端
+    return window.innerWidth <= 768;
+  }
+  return false;
+}
+
+// 全局锁定状态 - 手机版本默认锁定，桌面版本默认不锁定
+export const isLocked = writable<boolean>(isMobileEnv());
 
 // 锁定切换函数
 export function toggleLock() {

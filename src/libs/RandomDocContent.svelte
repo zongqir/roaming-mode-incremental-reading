@@ -38,6 +38,7 @@
   import type { DocPriorityData } from "../models/IncrementalConfig"
   import type { DocBasicInfo } from "../models/IncrementalConfig"
   import type { Metric } from "../models/IncrementalConfig"
+  import { isLocked, toggleLock, setLocked } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -50,6 +51,25 @@
   let showNotebookSelector = false // 控制下拉框显示
   let filterMode = FilterMode.Notebook
   let rootId = ""
+  
+  // 标签筛选相关变量
+  let selectedTags: string[] = []
+  let availableTags: string[] = []
+  let isTagsLoading = false
+  let showTagDropdown = false
+  
+  // 根文档选择器相关变量 - 混合输入模式
+  let isDocsLoading = false
+  let showDocSelector = false
+  let selectedDocTitle = ""
+  let currentLevel = "notebooks" // "notebooks" | "docs" | "childDocs"
+  let selectedNotebookForDoc = null // 当前选中的笔记本
+  let rootDocsList: any[] = [] // 当前笔记本下的根文档列表
+  let childDocsList: any[] = [] // 当前文档的子文档列表
+  let docNavigationStack: any[] = [] // 文档导航栈，记录导航历史
+  let showManualInput = false // 是否显示手动输入框
+  let manualInputId = "" // 手动输入的ID
+  
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
   let currentRndId
@@ -347,6 +367,49 @@
     docMetrics = []
 
     try {
+      // 检查是否启用了自定义SQL模式
+      if (storeConfig?.customSqlEnabled && storeConfig?.currentSql) {
+        // 使用自定义SQL模式
+        const docId = await handleCustomSqlMode()
+        if (docId) {
+          currentRndId = docId
+          
+          // 获取文档块信息
+          const blockResult = await pluginInstance.kernelApi.getBlockByID(currentRndId)
+          if (!blockResult) {
+            content = "获取文档块信息失败"
+            tips = "或许文档已被删除，请尝试使用其他过滤条件。"
+            currentRndId = undefined
+            isLoading = false
+            return
+          }
+          
+          // 设置标题
+          title = blockResult.content || "无标题"
+          
+          // 获取文档详细内容
+          const docResult = await pluginInstance.kernelApi.getDoc(currentRndId)
+          
+          if (!docResult || docResult.code !== 0) {
+            content = "获取文档详情失败"
+            tips = "或许文档已被删除，请尝试使用其他过滤条件。"
+            isLoading = false
+            return
+          }
+          
+          // 设置内容
+          const doc = docResult.data as any
+          content = doc.content || ""
+          
+          // 初始化可编辑内容
+          await initEditableContent()
+          
+          tips = `展卷乃无言的情意：通过自定义SQL查询邂逅此文，穿越星辰遇见你，三秋霜雪印马蹄。`
+          
+          isLoading = false
+          return
+        }
+      }
       // 检查渐进复习器是否已初始化
       if (!pr) {
         pr = new IncrementalReviewer(storeConfig, pluginInstance)
@@ -847,21 +910,27 @@
       // 获取已访问文档ID集合
       const visitedDocs = await pr.getVisitedDocs()
       const visitedSet = new Set(visitedDocs.map(d => d.id))
-      // 并发获取优先级和标题
+      // 批量获取文档优先级属性
+      const docIds = allDocs.map(doc => doc.id)
+      const docPriorities = await pr.batchGetDocumentPriorities(docIds)
+      
+      // 并发获取标题
       const batchSize = 20
       let tempList: Array<{id: string, title: string, priority: number, visited: boolean}> = []
       for (let i = 0; i < allDocs.length; i += batchSize) {
         const batch = allDocs.slice(i, i + batchSize)
         const batchResults = await Promise.all(batch.map(async doc => {
           try {
-            const docData = await pr.getDocPriorityData(doc.id)
-            const priorityResult = await pr["calculatePriority"](docData)
+            // 从批量查询结果中获取优先级
+            const priorityInfo = docPriorities.find(p => p.docId === doc.id)
+            const priority = priorityInfo ? priorityInfo.priority : 5.0
+            
             // 获取标题
             const block = await pluginInstance.kernelApi.getBlockByID(doc.id)
             return {
               id: doc.id,
               title: block?.content || '(无标题)',
-              priority: priorityResult.priority,
+              priority: priority,
               visited: visitedSet.has(doc.id)
             }
           } catch {
@@ -1114,6 +1183,15 @@
     // 重置文档
     clearDoc()
     
+    // 🎯 关键修复：如果切换到标签模式，自动加载可用标签
+    if (filterMode === FilterMode.Tag) {
+      try {
+        await loadAvailableTags()
+      } catch (error) {
+        console.error("❌ 自动加载标签失败:", error)
+      }
+    }
+    
     // 如果当前是渐进模式，需要重新初始化reviewer以更新筛选条件
     if (storeConfig.reviewMode === "incremental") {
       pluginInstance.logger.info("筛选模式变更后重新初始化渐进模式...")
@@ -1146,6 +1224,237 @@
     }
     
     pluginInstance.logger.info("storeConfig saved rootId =>", storeConfig)
+  }
+
+  const onTagsChange = async function () {
+    console.log("🔄 onTagsChange 被调用")
+    console.log("📋 当前 selectedTags:", selectedTags)
+    console.log("🏷️ selectedTags 类型:", typeof selectedTags)
+    console.log("📊 Array.isArray(selectedTags):", Array.isArray(selectedTags))
+
+    // 保存标签配置
+    storeConfig.tags = selectedTags
+    console.log("💾 保存到 storeConfig.tags:", storeConfig.tags)
+    await pluginInstance.saveData(storeName, storeConfig)
+    
+    // 重置文档
+    clearDoc()
+    
+    // 如果当前是渐进模式，需要重新初始化reviewer以更新标签筛选条件
+    if (storeConfig.reviewMode === "incremental") {
+      console.log("🔄 标签变更后重新初始化渐进模式...")
+      pluginInstance.logger.info("标签变更后重新初始化渐进模式...")
+      pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      await pr.initIncrementalConfig()
+      
+      // 自动开始新的漫游，避免用户手动点击
+      await doIncrementalRandomDoc()
+    }
+    
+    pluginInstance.logger.info("storeConfig saved tags =>", storeConfig)
+  }
+
+  // 根文档选择器相关方法
+  
+  // 开始文档选择流程 - 显示笔记本列表
+  const startDocumentSelection = async function () {
+    if (isDocsLoading) return
+    
+    showDocSelector = true
+    currentLevel = "notebooks"
+    selectedNotebookForDoc = null
+    rootDocsList = []
+    childDocsList = []
+    docNavigationStack = []
+  }
+
+  // 选择笔记本，加载其下的根文档
+  const selectNotebookForDoc = async function (notebook: any) {
+    if (isDocsLoading) return
+    
+    isDocsLoading = true
+    selectedNotebookForDoc = notebook
+    currentLevel = "docs"
+    childDocsList = []
+    docNavigationStack = [] // 重置导航栈
+    
+    try {
+      const result = await pluginInstance.kernelApi.getRootDocs(notebook.id)
+      
+      if (result.code !== 0) {
+        pluginInstance.logger.error(`获取文档列表失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        rootDocsList = []
+        return
+      }
+
+      const actualData = result.data || []
+      rootDocsList = (actualData as any[]).map(doc => ({
+        id: doc.id,
+        title: doc.title || '(无标题)'
+      }))
+      
+      pluginInstance.logger.info(`获取到 ${rootDocsList.length} 个根文档`)
+    } catch (error) {
+      pluginInstance.logger.error("获取根文档列表失败", error)
+      rootDocsList = []
+    } finally {
+      isDocsLoading = false
+    }
+  }
+
+  // 返回笔记本选择
+  const backToNotebookSelection = function () {
+    currentLevel = "notebooks"
+    selectedNotebookForDoc = null
+    rootDocsList = []
+    childDocsList = []
+    docNavigationStack = []
+  }
+
+  // 深入文档 - 查看子文档
+  const exploreDocument = async function (docId: string, docTitle: string) {
+    if (isDocsLoading) return
+    
+    isDocsLoading = true
+    
+    // 将当前状态压入导航栈
+    docNavigationStack.push({
+      level: currentLevel,
+      data: currentLevel === "docs" ? [...rootDocsList] : [...childDocsList],
+      parentInfo: { id: docId, title: docTitle }
+    })
+    
+    currentLevel = "childDocs"
+    
+    try {
+      const result = await pluginInstance.kernelApi.getChildDocs(docId, selectedNotebookForDoc.id)
+      
+      if (result.code !== 0) {
+        pluginInstance.logger.error(`获取子文档列表失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        childDocsList = []
+        return
+      }
+
+      const actualData = result.data || []
+      childDocsList = (actualData as any[]).map(doc => ({
+        id: doc.id,
+        title: doc.title || '(无标题)'
+      }))
+      
+      pluginInstance.logger.info(`获取到 ${childDocsList.length} 个子文档`)
+    } catch (error) {
+      pluginInstance.logger.error("获取子文档列表失败", error)
+      childDocsList = []
+    } finally {
+      isDocsLoading = false
+    }
+  }
+
+  // 返回上一级
+  const backToPreviousLevel = function () {
+    if (docNavigationStack.length > 0) {
+      const previousState = docNavigationStack.pop()
+      currentLevel = previousState.level
+      
+      if (currentLevel === "docs") {
+        rootDocsList = previousState.data
+        childDocsList = []
+      } else if (currentLevel === "childDocs") {
+        childDocsList = previousState.data
+      }
+    } else {
+      // 如果没有导航历史，回到根文档列表
+      currentLevel = "docs"
+      childDocsList = []
+    }
+  }
+
+  // 选择文档
+  const selectDocument = async function (docId: string, docTitle: string) {
+    rootId = docId
+    selectedDocTitle = docTitle
+    showDocSelector = false
+    
+    // 保存配置
+    storeConfig.rootId = rootId
+    if (selectedDocTitle) {
+      storeConfig.rootDocTitle = selectedDocTitle
+    }
+    await pluginInstance.saveData(storeName, storeConfig)
+    
+    pluginInstance.logger.info(`已设置根文档为: ${docId} - ${docTitle}`)
+  }
+
+  // 响应式计算当前选中文档的标题
+  $: currentDocTitle = (() => {
+    if (!rootId) {
+      return "请选择文档"
+    }
+    
+    // 优先显示已缓存的文档标题
+    if (selectedDocTitle) {
+      return selectedDocTitle
+    }
+    
+    // 其次尝试从文档列表中查找
+    const doc = rootDocsList.find(d => d.id === rootId)
+    if (doc && doc.title) {
+      return doc.title
+    }
+    
+    // 如果都没有标题，显示ID片段作为临时占位符
+    return rootId.substring(0, 8) + "..."
+  })()
+
+  // 切换到手动输入模式
+  const switchToManualInput = function () {
+    showManualInput = true
+    showDocSelector = false
+    manualInputId = rootId || ""
+  }
+
+  // 处理手动输入ID的确认
+  const confirmManualInput = async function () {
+    if (!manualInputId || manualInputId.trim() === "") {
+      showMessage("请输入有效的文档ID", 3000, "error")
+      return
+    }
+    
+    const trimmedId = manualInputId.trim()
+    
+    try {
+      // 尝试获取文档标题进行验证
+      const title = await pluginInstance.kernelApi.getDocTitle(trimmedId)
+      
+      if (title) {
+        // 文档存在，设置为根文档
+        await selectDocument(trimmedId, title)
+        showManualInput = false
+        showMessage(`已设置根文档: ${title}`, 2000, "info")
+      } else {
+        // 文档不存在或无标题，询问用户是否仍要使用
+        const confirmed = confirm(`无法找到文档标题，文档ID可能无效。是否仍要使用 "${trimmedId}" 作为根文档？`)
+        if (confirmed) {
+          await selectDocument(trimmedId, "")
+          showManualInput = false
+          showMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
+        }
+      }
+    } catch (error) {
+      pluginInstance.logger.error("验证文档ID失败:", error)
+      const confirmed = confirm(`验证文档ID时出错。是否仍要使用 "${trimmedId}" 作为根文档？`)
+      if (confirmed) {
+        await selectDocument(trimmedId, "")
+        showManualInput = false
+        showMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
+      }
+    }
+  }
+
+  // 取消手动输入
+  const cancelManualInput = function () {
+    showManualInput = false
+    manualInputId = ""
   }
 
   const openDocEditor = async () => {
@@ -1191,6 +1500,62 @@
   function getNotebookName(notebookId) {
     const notebook = notebooks.find(n => n.id === notebookId)
     return notebook ? notebook.name : '未知笔记本'
+  }
+
+  // 获取所有可用标签
+  const loadAvailableTags = async function () {
+    if (isTagsLoading) return
+
+    isTagsLoading = true
+    try {
+      if (!pr) {
+        pr = new IncrementalReviewer(storeConfig, pluginInstance)
+        await pr.initIncrementalConfig()
+      }
+      availableTags = await pr.getAllAvailableTags()
+      pluginInstance.logger.info("成功加载标签列表", availableTags)
+    } catch (error) {
+      pluginInstance.logger.error("加载可用标签失败:", error)
+      availableTags = []
+    } finally {
+      isTagsLoading = false
+    }
+  }
+
+  // 切换标签选择
+  const toggleTag = function (tag: string) {
+    console.log("🏷️ toggleTag被调用 - 标签:", tag)
+    console.log("📋 点击前selectedTags:", selectedTags)
+    const index = selectedTags.indexOf(tag)
+    console.log("🔍 标签在数组中的索引:", index)
+
+    if (index > -1) {
+      selectedTags = selectedTags.filter(t => t !== tag)
+      console.log("❌ 移除标签后:", selectedTags)
+    } else {
+      selectedTags = [...selectedTags, tag]
+      console.log("✅ 添加标签后:", selectedTags)
+    }
+    console.log("📊 最终selectedTags数量:", selectedTags.length)
+  }
+
+  // 关闭标签下拉框
+  const closeTagDropdown = function () {
+    showTagDropdown = false
+  }
+
+  // 确定标签选择
+  const confirmTagSelection = function () {
+    // 触发标签变更保存
+    onTagsChange()
+    closeTagDropdown()
+  }
+
+  // 全部取消标签选择
+  const clearAllTags = function () {
+    selectedTags = []
+    closeTagDropdown()
+    onTagsChange()
   }
 
   // 导出函数，让外部可以调用
@@ -1310,6 +1675,28 @@ const initEditableContent = async () => {
   }
 };
 
+  // 刷新编辑区内容 - 用于实时同步源文档变化
+  const refreshEditableContent = async () => {
+    if (!currentRndId) return;
+    
+    try {
+      // 重新获取最新的文档内容
+      const docResult = await pluginInstance.kernelApi.getDoc(currentRndId);
+      if (docResult && docResult.code === 0) {
+        const doc = docResult.data as any;
+        const newContent = doc.content || "";
+        
+        // 只有在内容确实发生变化时才更新，避免不必要的重新渲染
+        if (newContent !== editableContent) {
+          editableContent = newContent;
+          pluginInstance.logger.info("编辑区内容已刷新，与源文档同步");
+        }
+      }
+    } catch (error) {
+      pluginInstance.logger.error("刷新编辑区内容失败:", error);
+    }
+  };
+
   // 当文档ID变化时初始化可编辑内容
   $: if (currentRndId) {
     initEditableContent();
@@ -1331,6 +1718,11 @@ const initEditableContent = async () => {
     // 读取配置
     storeConfig = await pluginInstance.safeLoad(storeName)
 
+    // 根据配置设置默认锁定状态
+    if (storeConfig?.defaultLocked) {
+      setLocked(true)
+    }
+
     // 读取笔记本
     const res = await pluginInstance.kernelApi.lsNotebooks()
     notebooks = (res?.data as any)?.notebooks ?? []
@@ -1351,6 +1743,23 @@ const initEditableContent = async () => {
       storeConfig.notebookId = selectedNotebooks.join(',')
       await pluginInstance.saveData(storeName, storeConfig)
     }
+
+    // 处理标签数据，确保数组格式正确
+    if (storeConfig?.tags) {
+      if (Array.isArray(storeConfig.tags)) {
+        selectedTags = [...storeConfig.tags]
+      } else if (typeof storeConfig.tags === 'string') {
+        // 兼容处理：将字符串格式的tags转换为数组格式
+        selectedTags = (storeConfig.tags as string).split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+        // 更新配置格式
+        storeConfig.tags = selectedTags
+        await pluginInstance.saveData(storeName, storeConfig)
+      } else {
+        selectedTags = []
+      }
+    } else {
+      selectedTags = []
+    }
     
     // 选中，若是没保存，获取第一个
     toNotebookId = storeConfig?.notebookId ?? notebooks[0].id
@@ -1361,6 +1770,7 @@ const initEditableContent = async () => {
     }
     filterMode = storeConfig.filterMode
     rootId = storeConfig?.rootId ?? ""
+    selectedDocTitle = storeConfig?.rootDocTitle ?? ""
 
     // 处理自定义 sql
     if (storeConfig?.customSqlEnabled) {
@@ -1430,6 +1840,7 @@ const initEditableContent = async () => {
         >
           <option value={FilterMode.Notebook}>笔记本</option>
           <option value={FilterMode.Root}>根文档</option>
+          <option value={FilterMode.Tag}>标签</option>
         </select>
         {#if filterMode === FilterMode.Notebook}
           <div class="notebook-selector">
@@ -1471,13 +1882,66 @@ const initEditableContent = async () => {
               </div>
             {/if}
           </div>
-        {:else}
-          <input
-            class="b3-text-field fn__size150"
-            bind:value={rootId}
-            on:change={onRootIdChange}
-            placeholder="输入根文档ID"
-          />
+        {:else if filterMode === FilterMode.Root}
+          <!-- 根文档选择器 -->
+          <button
+            class="action-item b3-select fn__flex-center fn__size150"
+            on:click={startDocumentSelection}
+          >
+            {currentDocTitle}
+          </button>
+        {:else if filterMode === FilterMode.Tag}
+          <!-- 标签选择器 -->
+          <div class="tag-selector">
+            <button
+              class="action-item b3-select fn__flex-center fn__size150"
+              on:click={loadAvailableTags}
+              on:click={() => showTagDropdown = !showTagDropdown}
+            >
+              {#if selectedTags.length === 0}
+                请选择标签
+              {:else if selectedTags.length === 1}
+                {selectedTags[0]}
+              {:else}
+                已选{selectedTags.length}个标签
+              {/if}
+            </button>
+            {#if showTagDropdown && !isTagsLoading}
+              <div class="tag-list">
+                {#if availableTags.length > 0}
+                  {#each availableTags as tag}
+                    <label class="tag-item">
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(tag)}
+                        on:change={() => toggleTag(tag)}
+                      />
+                      #{tag}
+                    </label>
+                  {/each}
+                {:else}
+                  <div class="tag-empty">没有找到标签</div>
+                {/if}
+                <div class="confirm-button-container">
+                  <button
+                    class="b3-button b3-button--outline fn__size150"
+                    on:click={clearAllTags}
+                  >
+                    清空所有
+                  </button>
+                  <button
+                    class="b3-button b3-button--outline fn__size150"
+                    on:click={confirmTagSelection}
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            {/if}
+            {#if isTagsLoading}
+              <div class="tag-loading">加载中...</div>
+            {/if}
+          </div>
         {/if}
         {#if storeConfig?.customSqlEnabled}
           <select
@@ -1651,25 +2115,196 @@ const initEditableContent = async () => {
           <div class="protyle-attr" contenteditable="false" />
         </div>
       </div>
-      <div 
-        class="editable-content-area"
-        contenteditable="true"
-        spellcheck="false"
-        bind:innerHTML={editableContent}
-        on:input={handleContentEdit}
-        on:blur={() => {
-          isEditing = false;
-          // 立即保存
-          if (saveTimeout) {
-            clearTimeout(saveTimeout);
-            saveContent(editableContent);
-          }
-        }}
-        on:focus={() => isEditing = true}
-      ></div>
+      <div class="editable-area-container">
+        <div class="editable-header">
+          <span class="editable-title">编辑区域</span>
+          <button class="lock-toggle-btn" on:click={toggleLock} title={$isLocked ? pluginInstance.i18n.unlockEditArea : pluginInstance.i18n.lockEditArea}>
+            {#if $isLocked}
+              🔒 {pluginInstance.i18n.editAreaLocked}
+            {:else}
+              🔓 {pluginInstance.i18n.editAreaUnlocked}
+            {/if}
+          </button>
+        </div>
+        {#if $isLocked}
+          <div 
+            class="editable-content-area locked"
+            contenteditable="false"
+            spellcheck="false"
+            bind:innerHTML={editableContent}
+            on:click={refreshEditableContent}
+          ></div>
+        {:else}
+          <div 
+            class="editable-content-area"
+            contenteditable="true"
+            spellcheck="false"
+            bind:innerHTML={editableContent}
+            on:input={handleContentEdit}
+            on:blur={() => {
+              isEditing = false;
+              // 立即保存
+              if (saveTimeout) {
+                clearTimeout(saveTimeout);
+                saveContent(editableContent);
+              }
+            }}
+            on:focus={async () => {
+              isEditing = true;
+              // 在聚焦时刷新内容，确保与源文档同步
+              await refreshEditableContent();
+            }}
+            on:click={refreshEditableContent}
+          ></div>
+        {/if}
+      </div>
     </div>
   </div>
 </div>
+
+<!-- 根文档选择器弹窗 -->
+{#if showDocSelector}
+  <div class="tree-selector-overlay" on:click={() => showDocSelector = false}>
+    <div class="tree-selector-container" on:click|stopPropagation>
+      <div class="tree-selector-header">
+        <h3>选择根文档</h3>
+        <button class="tree-close-btn" on:click={() => showDocSelector = false}>×</button>
+      </div>
+      
+      <div class="tree-selector-body">
+        {#if currentLevel === "notebooks"}
+          <div class="tree-header">
+            <span class="tree-title">选择笔记本</span>
+          </div>
+          <div class="tree-content">
+            {#each notebooks as notebook}
+              <div class="tree-item notebook-item" on:click={() => selectNotebookForDoc(notebook)}>
+                <span class="tree-icon">📚</span>
+                <span class="tree-label">{notebook.name}</span>
+                <span class="tree-arrow">→</span>
+              </div>
+            {/each}
+          </div>
+        {:else if currentLevel === "docs"}
+          <div class="tree-header">
+            <button class="tree-back" on:click={backToNotebookSelection}>
+              ← 返回
+            </button>
+            <span class="tree-title">{selectedNotebookForDoc?.name}</span>
+            <button class="tree-manual-btn" on:click={switchToManualInput}>
+              输入ID
+            </button>
+          </div>
+          <div class="tree-content">
+            {#if isDocsLoading}
+              <div class="tree-loading">加载中...</div>
+            {:else if rootDocsList.length > 0}
+              {#each rootDocsList as doc}
+                <div class="tree-item doc-item">
+                  <span class="tree-icon">📄</span>
+                  <span class="tree-label">{doc.title}</span>
+                  <div class="tree-actions">
+                    <button 
+                      class="tree-action-btn explore-btn" 
+                      on:click={() => exploreDocument(doc.id, doc.title)}
+                      title="查看子文档"
+                    >
+                      🔍
+                    </button>
+                    <button 
+                      class="tree-action-btn select-btn" 
+                      on:click={() => selectDocument(doc.id, doc.title)}
+                      title="选择此文档"
+                    >
+                      ✓
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            {:else}
+              <div class="tree-empty">该笔记本下没有根文档</div>
+            {/if}
+          </div>
+        {:else if currentLevel === "childDocs"}
+          <div class="tree-header">
+            <button class="tree-back" on:click={backToPreviousLevel}>
+              ← 返回
+            </button>
+            <span class="tree-title">子文档</span>
+            <button class="tree-manual-btn" on:click={switchToManualInput}>
+              输入ID
+            </button>
+          </div>
+          <div class="tree-content">
+            {#if isDocsLoading}
+              <div class="tree-loading">加载中...</div>
+            {:else if childDocsList.length > 0}
+              {#each childDocsList as doc}
+                <div class="tree-item doc-item">
+                  <span class="tree-icon">📄</span>
+                  <span class="tree-label">{doc.title}</span>
+                  <div class="tree-actions">
+                    <button 
+                      class="tree-action-btn explore-btn" 
+                      on:click={() => exploreDocument(doc.id, doc.title)}
+                      title="查看子文档"
+                    >
+                      🔍
+                    </button>
+                    <button 
+                      class="tree-action-btn select-btn" 
+                      on:click={() => selectDocument(doc.id, doc.title)}
+                      title="选择此文档"
+                    >
+                      ✓
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            {:else}
+              <div class="tree-empty">该文档下没有子文档</div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- 手动输入ID弹窗 -->
+{#if showManualInput}
+  <div class="tree-selector-overlay" on:click={cancelManualInput}>
+    <div class="manual-input-container" on:click|stopPropagation>
+      <div class="manual-input-header">
+        <h3>手动输入文档ID</h3>
+        <button class="tree-close-btn" on:click={cancelManualInput}>×</button>
+      </div>
+      
+      <div class="manual-input-body">
+        <div class="manual-input-group">
+          <label for="manual-id-input">文档ID：</label>
+          <input 
+            id="manual-id-input"
+            type="text" 
+            class="b3-text-field"
+            bind:value={manualInputId}
+            placeholder="请输入文档ID"
+            on:keydown={(e) => e.key === 'Enter' && confirmManualInput()}
+          />
+        </div>
+        
+        <div class="manual-input-actions">
+          <button class="b3-button b3-button--outline" on:click={cancelManualInput}>
+            取消
+          </button>
+          <button class="b3-button" on:click={confirmManualInput}>
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style lang="stylus">
   .fr
@@ -1921,4 +2556,287 @@ const initEditableContent = async () => {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+
+  /* 根文档选择器样式 */
+  .tree-selector-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+
+  .tree-selector-container, .manual-input-container {
+    background: var(--b3-theme-background);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    width: 500px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tree-selector-header, .manual-input-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--b3-theme-surface);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .tree-selector-header h3, .manual-input-header h3 {
+    margin: 0;
+    font-size: 16px;
+    color: var(--b3-theme-on-surface);
+  }
+
+  .tree-close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--b3-theme-on-surface-light);
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tree-close-btn:hover {
+    color: var(--b3-theme-on-surface);
+  }
+
+  .tree-selector-body {
+    padding: 0;
+    overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tree-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--b3-theme-surface);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--b3-theme-surface-light);
+  }
+
+  .tree-title {
+    font-weight: 500;
+    color: var(--b3-theme-on-surface);
+  }
+
+  .tree-back, .tree-manual-btn {
+    background: none;
+    border: none;
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  .tree-back:hover, .tree-manual-btn:hover {
+    background: var(--b3-theme-primary-light);
+  }
+
+  .tree-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .tree-item {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    border-bottom: 1px solid var(--b3-theme-surface);
+    transition: background-color 0.2s;
+  }
+
+  .tree-item:hover {
+    background: var(--b3-theme-surface-light);
+  }
+
+  .tree-item:last-child {
+    border-bottom: none;
+  }
+
+  .tree-icon {
+    margin-right: 8px;
+    font-size: 14px;
+  }
+
+  .tree-label {
+    flex: 1;
+    color: var(--b3-theme-on-surface);
+    font-size: 14px;
+  }
+
+  .tree-arrow {
+    color: var(--b3-theme-on-surface-light);
+    font-size: 12px;
+  }
+
+  .tree-actions {
+    display: flex;
+    gap: 4px;
+  }
+
+  .tree-action-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    transition: background-color 0.2s;
+  }
+
+  .tree-action-btn:hover {
+    background: var(--b3-theme-surface);
+  }
+
+  .explore-btn {
+    color: var(--b3-theme-primary);
+  }
+
+  .select-btn {
+    color: var(--b3-theme-success);
+  }
+
+  .tree-loading, .tree-empty {
+    padding: 20px;
+    text-align: center;
+    color: var(--b3-theme-on-surface-light);
+    font-size: 14px;
+  }
+
+  /* 手动输入弹窗样式 */
+  .manual-input-body {
+    padding: 20px;
+  }
+
+  .manual-input-group {
+    margin-bottom: 16px;
+  }
+
+  .manual-input-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: var(--b3-theme-on-surface);
+    font-size: 14px;
+  }
+
+  .manual-input-group input {
+    width: 100%;
+  }
+
+  .manual-input-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* 标签选择器样式 - 完全参照笔记本选择器 */
+  .tag-selector
+    position: relative
+    display: inline-block
+  
+  .tag-list
+    position: absolute
+    top: 100%
+    left: 0
+    z-index: 100
+    background: var(--b3-theme-background)
+    border: 1px solid var(--b3-border-color)
+    border-radius: 4px
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1)
+    padding: 8px
+    max-height: 300px
+    overflow-y: auto
+    width: 200px
+  
+  .tag-item
+    display: block
+    padding: 6px 8px
+    cursor: pointer
+    font-size: 13px
+    border-radius: 4px
+    
+    &:hover
+      background-color: var(--b3-list-hover)
+      
+    input
+      margin-right: 8px
+  
+  .tag-empty
+    padding: 12px
+    text-align: center
+    color: var(--b3-theme-on-surface-light)
+    font-size: 13px
+  
+  .tag-loading
+    padding: 12px
+    text-align: center
+    color: var(--b3-theme-on-surface-light)
+    font-size: 13px
+
+  // 编辑区域样式
+  .editable-area-container
+    margin-top: 8px
+    border: 1px solid var(--b3-border-color)
+    border-radius: 6px
+    overflow: hidden
+
+  .editable-header
+    display: flex
+    justify-content: space-between
+    align-items: center
+    padding: 8px 12px
+    background-color: var(--b3-theme-surface)
+    border-bottom: 1px solid var(--b3-border-color)
+    
+  .editable-title
+    font-size: 14px
+    font-weight: 500
+    color: var(--b3-theme-on-background)
+
+  .lock-toggle-btn
+    background: none
+    border: 1px solid var(--b3-border-color)
+    padding: 4px 8px
+    border-radius: 4px
+    cursor: pointer
+    font-size: 12px
+    transition: all 0.2s ease
+    
+    &:hover
+      background-color: var(--b3-theme-surface-light)
+      border-color: var(--b3-theme-primary)
+
+  .editable-content-area
+    min-height: 200px
+    padding: 12px
+    background-color: var(--b3-theme-background)
+    outline: none
+    transition: all 0.2s ease
+    
+    &.locked
+      background-color: var(--b3-theme-surface-light)
+      color: var(--b3-theme-on-surface-light)
+      cursor: not-allowed
+      
+    &:focus:not(.locked)
+      box-shadow: inset 0 0 0 1px var(--b3-theme-primary)
 </style>

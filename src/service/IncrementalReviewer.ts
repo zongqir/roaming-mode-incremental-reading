@@ -229,43 +229,18 @@ class IncrementalReviewer {
       // 3.1.7 记录获取文档数量（仅日志，不显示弹窗）
       this.pluginInstance.logger.info(`已获取 ${allDocs.length} 个文档用于计算漫游概率`)
 
-      // 3.1.8 获取所有文档的优先级数据
-      this.pluginInstance.logger.info("开始获取所有文档的优先级数据...")
+      // 3.1.8 批量获取文档的优先级属性
+      this.pluginInstance.logger.info("开始批量查询所有文档的优先级属性...")
       
-      // 3.1.9 批量处理文档优先级计算
-      const docPriorityList: { docId: string, priority: number }[] = []
-      const batchSize = 20
+      // 3.1.9 提取文档ID列表
+      const docIds = allDocs.map(doc => doc.id)
       
-      for (let i = 0; i < allDocs.length; i += batchSize) {
-        const batchDocs = allDocs.slice(i, i + batchSize)
-        this.pluginInstance.logger.info(`处理第 ${Math.floor(i/batchSize) + 1}/${Math.ceil(allDocs.length/batchSize)} 批文档，共 ${batchDocs.length} 个`)
-        
-        // 3.1.9.1 并行处理一批文档
-        const batchResults = await Promise.all(
-          batchDocs.map(async (doc) => {
-            try {
-              const docData = await this.getDocPriorityData(doc.id)
-              const priorityResult = await this.calculatePriority(docData)
-              return { docId: doc.id, priority: priorityResult.priority }
-            } catch (err) {
-              this.pluginInstance.logger.error(`获取文档 ${doc.id} 优先级数据失败`, err);
-              // 返回默认优先级，避免因单个文档失败而中断整个流程
-              return { docId: doc.id, priority: 5.0 };
-            }
-          })
-        )
-        
-        docPriorityList.push(...batchResults)
-        
-        // 3.1.9.2 更新进度提示 - 只在处理大量文档时显示进度，且降低显示频率
-        if (allDocs.length > 100 && i % (batchSize * 5) === 0) {
-          showMessage(`正在计算文档优先级 ${docPriorityList.length}/${allDocs.length}`, 1000, "info")
-        }
-      }
+      // 3.1.10 批量查询文档优先级（自动修复缺失的优先级）
+      const docPriorityList = await this.batchGetDocumentPriorities(docIds)
       
-      this.pluginInstance.logger.info(`已计算 ${docPriorityList.length} 个文档的优先级数据`)
+      this.pluginInstance.logger.info(`成功获取 ${docPriorityList.length} 个文档的优先级数据`)
       
-      // 3.1.10 记录前几个文档的优先级情况（调试用）
+      // 3.1.11 记录前几个文档的优先级情况（调试用）
       const top5Docs = docPriorityList.slice(0, 5).map(doc => `${doc.docId}: ${doc.priority.toFixed(2)}`);
       this.pluginInstance.logger.info(`前5个文档的优先级: ${top5Docs.join(', ')}`)
 
@@ -283,24 +258,24 @@ class IncrementalReviewer {
         return { docId: maxDoc.docId, isAbsolutePriority: true }
       }
 
-      // 3.1.11 使用轮盘赌算法选择文档
+      // 3.1.12 使用轮盘赌算法选择文档
       const selectedDoc = this.rouletteWheelSelection(docPriorityList)
       this.pluginInstance.logger.info(`选中的文档ID: ${selectedDoc}`)
       
-      // 3.1.12 计算并记录选中文档的概率
+      // 3.1.13 计算并记录选中文档的概率
       const selectedDocInfo = docPriorityList.find(item => item.docId === selectedDoc)
       if (!selectedDocInfo) {
         this.pluginInstance.logger.error(`严重错误：无法找到选中文档 ${selectedDoc} 的优先级信息`)
         throw new Error(`无法找到选中文档 ${selectedDoc} 的优先级信息`)
       }
       
-      // 3.1.13 计算总优先级（高精度）
+      // 3.1.14 计算总优先级（高精度）
       const totalPriority = docPriorityList.reduce((sum, item) => sum + item.priority, 0)
       this.pluginInstance.logger.info(`所有文档总优先级: ${totalPriority.toFixed(6)}`)
       
       try {
         this.pluginInstance.logger.info(`开始计算选中文档的概率...`)
-        // 3.1.14 精确计算概率值
+        // 3.1.15 精确计算概率值
         this._lastSelectionProbability = this.calculateSelectionProbability(
           selectedDocInfo.priority, 
           totalPriority
@@ -312,11 +287,11 @@ class IncrementalReviewer {
         throw new Error(`计算选中概率失败: ${error.message}`)
       }
       
-      // 3.1.15 更新访问次数
+      // 3.1.16 更新访问次数
       await this.updateVisitCount(selectedDoc)
       this.pluginInstance.logger.info("已更新文档的访问次数")
       
-      // 3.1.16 记录漫游历史
+      // 3.1.17 记录漫游历史
       try {
         const blockResult = await this.pluginInstance.kernelApi.getBlockByID(selectedDoc)
         if (blockResult) {
@@ -413,51 +388,37 @@ class IncrementalReviewer {
         allDocs = allDocs.concat(pageDocs)
       }
       
-      // 批量获取文档的优先级
-      const priorityList: Array<{id: string; title?: string; priority: number}> = []
-      const batchSize = 20
+      // 批量获取文档的优先级属性
+      const docIds = allDocs.map(doc => doc.id)
+      const docPriorities = await this.batchGetDocumentPriorities(docIds)
       
-      for (let i = 0; i < allDocs.length; i += batchSize) {
-        const batchDocs = allDocs.slice(i, i + batchSize)
+      // 构建包含标题的优先级列表
+      const priorityList: Array<{id: string; title?: string; priority: number}> = []
+      
+      for (const doc of allDocs) {
+        const priorityInfo = docPriorities.find(p => p.docId === doc.id)
+        const priority = priorityInfo ? priorityInfo.priority : 5.0
         
-        // 并行处理一批文档
-        const batchResults = await Promise.all(
-          batchDocs.map(async (doc) => {
-            try {
-              const docData = await this.getDocPriorityData(doc.id)
-              const priorityResult = await this.calculatePriority(docData)
-              // 提取文档标题
-              let title = doc.content
-              if (title && title.length > 0) {
-                // 从content中提取标题，通常是第一行的markdown标题
-                const titleMatch = title.match(/^#+\s+(.+)$/m)
-                if (titleMatch && titleMatch[1]) {
-                  title = titleMatch[1].trim()
-                } else {
-                  // 或者使用内容的前30个字符
-                  title = title.substring(0, 30) + (title.length > 30 ? '...' : '')
-                }
-              } else {
-                title = '未命名文档'
-              }
-              
-              return { 
-                id: doc.id, 
-                title, 
-                priority: priorityResult.priority 
-              }
-            } catch (err) {
-              this.pluginInstance.logger.warn(`获取文档 ${doc.id} 优先级失败:`, err)
-              return { 
-                id: doc.id, 
-                title: '未知文档', 
-                priority: 5.0 // 默认优先级 
-              }
-            }
-          })
-        )
+        // 提取文档标题
+        let title = doc.content
+        if (title && title.length > 0) {
+          // 从content中提取标题，通常是第一行的markdown标题
+          const titleMatch = title.match(/^#+\s+(.+)$/m)
+          if (titleMatch && titleMatch[1]) {
+            title = titleMatch[1].trim()
+          } else {
+            // 或者使用内容的前30个字符
+            title = title.substring(0, 30) + (title.length > 30 ? '...' : '')
+          }
+        } else {
+          title = '未命名文档'
+        }
         
-        priorityList.push(...batchResults)
+        priorityList.push({
+          id: doc.id,
+          title: title,
+          priority: priority
+        })
       }
       
       // 按优先级排序（从高到低）
@@ -618,11 +579,11 @@ class IncrementalReviewer {
   }
 
   /**
-   * 4.3 修复所有文档的指标
-   * 将空值或0值设为默认值5，删除多余指标
+   * 4.3 修复所有文档的指标并重新计算优先级
+   * 将空值或0值设为默认值5，删除多余指标，计算并更新所有文档的优先级
    * 
    * @param progressCallback 可选的进度回调函数
-   * @returns 修复结果统计信息
+   * @returns 修复结果统计信息，包括更新的优先级数量
    */
   public async repairAllDocumentMetrics(
     progressCallback?: (current: number, total: number) => void
@@ -630,7 +591,8 @@ class IncrementalReviewer {
     totalDocs: number,
     updatedDocs: number,
     updatedMetrics: { id: string, name: string, count: number }[],
-    deletedMetricsCount: number
+    deletedMetricsCount: number,
+    updatedPriorities: number
   }> {
     try {
       // 4.3.1 使用空过滤条件，处理所有文档
@@ -641,6 +603,7 @@ class IncrementalReviewer {
       let totalUpdatedDocs = 0
       let updatedMetricsMap = new Map()
       let totalDeletedMetrics = 0
+      let totalUpdatedPriorities = 0
       
       // 4.3.3 初始化指标统计计数器
       this.incrementalConfig.metrics.forEach(metric => {
@@ -663,7 +626,7 @@ class IncrementalReviewer {
       this.pluginInstance.logger.info(`符合条件的文档总数: ${totalDocCount}`)
       
       if (totalDocCount === 0) {
-        return { totalDocs: 0, updatedDocs: 0, updatedMetrics: [], deletedMetricsCount: 0 }
+        return { totalDocs: 0, updatedDocs: 0, updatedMetrics: [], deletedMetricsCount: 0, updatedPriorities: 0 }
       }
       
       // 4.3.5 使用分页查询处理所有文档
@@ -707,7 +670,7 @@ class IncrementalReviewer {
         
         // 4.3.8.2 定期更新进度提示
         if (i % 50 === 0 || i === allDocs.length - 1) {
-          showMessage(`正在处理文档指标: ${i+1}/${allDocs.length}`, 1000, "info")
+          showMessage(`正在处理文档指标和优先级: ${i+1}/${allDocs.length}`, 1000, "info")
         }
         
         // 4.3.8.3 获取文档当前的所有属性
@@ -762,21 +725,39 @@ class IncrementalReviewer {
           }
         }
         
-        // 4.3.8.11 如果文档有更新，计数加1
+        // 4.3.8.11 计算并更新文档优先级
+        try {
+          // 获取更新后的文档优先级数据
+          const docPriorityData = await this.getDocPriorityData(doc.id)
+          // 计算优先级
+          const priorityResult = await this.calculatePriority(docPriorityData)
+          // 更新文档的priority属性
+          await this.updateDocPriority(doc.id, priorityResult.priority)
+          totalUpdatedPriorities++
+          
+          this.pluginInstance.logger.info(
+            `已更新文档 ${doc.id} 的优先级为 ${priorityResult.priority.toFixed(4)} [${i+1}/${allDocs.length}]`
+          )
+        } catch (priorityError) {
+          this.pluginInstance.logger.error(`更新文档 ${doc.id} 的优先级失败 [${i+1}/${allDocs.length}]`, priorityError)
+        }
+        
+        // 4.3.8.12 如果文档有更新，计数加1
         if (docUpdated) {
           totalUpdatedDocs++
         }
       }
       
       // 4.3.9 完成后显示结果
-      showMessage(`指标修复完成! 处理了 ${allDocs.length} 篇文档，更新了 ${totalUpdatedDocs} 篇`, 5000, "info")
+      showMessage(`指标和优先级处理完成! 处理了 ${allDocs.length} 篇文档，更新了 ${totalUpdatedDocs} 篇，重新计算了 ${totalUpdatedPriorities} 个优先级`, 5000, "info")
       
       // 4.3.10 返回统计结果
       return {
         totalDocs: allDocs.length,
         updatedDocs: totalUpdatedDocs,
         updatedMetrics: Array.from(updatedMetricsMap.values()).filter(m => m.count > 0),
-        deletedMetricsCount: totalDeletedMetrics
+        deletedMetricsCount: totalDeletedMetrics,
+        updatedPriorities: totalUpdatedPriorities
       }
     } catch (error) {
       this.pluginInstance.logger.error("修复文档指标失败", error)
@@ -834,6 +815,94 @@ class IncrementalReviewer {
   private async calculatePriority(docData: DocPriorityData): Promise<{ priority: number }> {
     // 直接使用incrementalConfig计算优先级，不再进行指标修复
     return this.incrementalConfig.calculatePriority(docData);
+  }
+
+  /**
+   * 4.9 批量获取文档优先级（通过priority属性）
+   * 直接从文档属性中读取已计算的优先级，如果发现缺失则自动修复
+   * 
+   * @param docIds 文档ID列表
+   * @returns 文档优先级列表
+   */
+  public async batchGetDocumentPriorities(docIds: string[]): Promise<{ docId: string, priority: number }[]> {
+    const batchSize = 50 // 每批查询50个文档
+    const allResults: { docId: string, priority: number }[] = []
+    let hasMissingPriority = false
+    
+    this.pluginInstance.logger.info(`开始批量查询 ${docIds.length} 个文档的优先级属性`)
+    
+    // 分批查询文档的priority属性
+    for (let i = 0; i < docIds.length; i += batchSize) {
+      const batchIds = docIds.slice(i, i + batchSize)
+      this.pluginInstance.logger.info(`查询第 ${Math.floor(i/batchSize) + 1}/${Math.ceil(docIds.length/batchSize)} 批文档，共 ${batchIds.length} 个`)
+      
+      // 并行查询一批文档的属性
+      const batchResults = await Promise.all(
+        batchIds.map(async (docId) => {
+          try {
+            const attrs = await this.pluginInstance.kernelApi.getBlockAttrs(docId)
+            const data = attrs.data || attrs
+            const priorityValue = data['custom-priority']
+            
+            if (!priorityValue || priorityValue === '' || isNaN(parseFloat(priorityValue))) {
+              // 发现缺失的优先级
+              hasMissingPriority = true
+              this.pluginInstance.logger.warn(`文档 ${docId} 的priority属性缺失或无效: ${priorityValue}`)
+              return { docId, priority: null }
+            }
+            
+            return { docId, priority: parseFloat(priorityValue) }
+          } catch (err) {
+            this.pluginInstance.logger.error(`查询文档 ${docId} 的priority属性失败`, err)
+            hasMissingPriority = true
+            return { docId, priority: null }
+          }
+        })
+      )
+      
+      allResults.push(...batchResults)
+      
+      // 更新进度提示
+      if (docIds.length > 100 && i % (batchSize * 2) === 0) {
+        showMessage(`正在查询文档优先级 ${allResults.length}/${docIds.length}`, 1000, "info")
+      }
+    }
+    
+    // 如果发现任何缺失的优先级，立即执行修复
+    if (hasMissingPriority) {
+      this.pluginInstance.logger.warn("发现缺失的优先级属性，开始执行自动修复...")
+      showMessage("检测到文档优先级数据不完整，正在自动修复...", 3000, "info")
+      
+      try {
+        // 调用修复函数
+        const repairResult = await this.repairAllDocumentMetrics()
+        this.pluginInstance.logger.info(
+          `优先级修复完成: 处理了${repairResult.totalDocs}篇文档，` +
+          `更新了${repairResult.updatedDocs}篇，重新计算了${repairResult.updatedPriorities}个优先级`
+        )
+        showMessage(`优先级数据修复完成，重新计算了${repairResult.updatedPriorities}个文档的优先级`, 3000, "info")
+        
+        // 修复完成后，重新查询所有文档的优先级
+        this.pluginInstance.logger.info("修复完成，重新查询文档优先级...")
+        return await this.batchGetDocumentPriorities(docIds)
+        
+      } catch (repairError) {
+        this.pluginInstance.logger.error("自动修复优先级数据失败", repairError)
+        showMessage(`自动修复失败: ${repairError.message}`, 5000, "error")
+        
+        // 修复失败时，返回带默认值的结果
+        return allResults.map(result => ({
+          docId: result.docId,
+          priority: result.priority !== null ? result.priority : 5.0
+        }))
+      }
+    }
+    
+    // 过滤掉null值（理论上不应该有，但为了安全起见）
+    const validResults = allResults.filter(result => result.priority !== null) as { docId: string, priority: number }[]
+    
+    this.pluginInstance.logger.info(`成功查询到 ${validResults.length} 个文档的优先级属性`)
+    return validResults
   }
 
   /**
@@ -1232,23 +1301,92 @@ class IncrementalReviewer {
     // 7.1.1 使用传入的配置或当前实例的最新配置
     const targetConfig = config || this.storeConfig
     
-    // 7.1.2 从配置中获取过滤模式和相关ID
+    // 7.1.2 从配置中获取过滤模式和相关参数
     const filterMode = targetConfig.filterMode || FilterMode.Notebook
     const notebookId = targetConfig.notebookId || ""
     const rootId = targetConfig.rootId || ""
+    const tags = targetConfig.tags || []
+    
+    // 详细日志：记录当前使用的配置
+    this.pluginInstance.logger.info("🏗️ buildFilterCondition 使用的配置:", {
+      "是否传入config": !!config,
+      "最终使用的filterMode": filterMode,
+      "最终使用的notebookId": notebookId,
+      "最终使用的rootId": rootId,
+      "最终使用的tags": tags,
+      "实例this.storeConfig": {
+        "filterMode": this.storeConfig.filterMode,
+        "notebookId": this.storeConfig.notebookId,
+        "rootId": this.storeConfig.rootId,
+        "tags": this.storeConfig.tags
+      }
+    })
 
     let condition = ""
-    if (filterMode === FilterMode.Notebook && notebookId) {
-      // 处理多个笔记本ID的情况
-      const notebookIds = notebookId.split(',')
-      if (notebookIds.length > 0) {
-        const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
-        condition = `AND box IN (${quotedIds})`
-        this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+    
+    // 根据筛选模式严格匹配，防止模式切换时的交叉干扰
+    if (filterMode === FilterMode.Notebook) {
+      // 笔记本模式 - 仅当有笔记本ID时应用过滤
+      if (notebookId) {
+        const notebookIds = notebookId.split(',')
+        if (notebookIds.length > 0) {
+          const quotedIds = notebookIds.map(id => `'${id}'`).join(',')
+          condition = `AND box IN (${quotedIds})`
+          this.pluginInstance.logger.info(`应用笔记本过滤，笔记本IDs: ${quotedIds}`)
+        }
+      } else {
+        this.pluginInstance.logger.info(`笔记本模式但无笔记本ID，不应用过滤条件`)
       }
-    } else if (filterMode === FilterMode.Root && rootId) {
-      this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
-      condition = `AND path LIKE '%${rootId}%'`
+    } else if (filterMode === FilterMode.Root) {
+      // 根文档模式 - 仅当有根文档ID时应用过滤
+      if (rootId) {
+        condition = `AND path LIKE '%${rootId}%'`
+        this.pluginInstance.logger.info(`应用根文档过滤，根文档ID: ${rootId}`)
+      } else {
+        this.pluginInstance.logger.info(`根文档模式但无根文档ID，不应用过滤条件`)
+      }
+    } else if (filterMode === FilterMode.Tag) {
+      console.log("🏷️ 进入标签过滤模式")
+      console.log("📋 传入的tags参数:", tags)
+      console.log("🔍 tags类型:", typeof tags)
+      console.log("📊 Array.isArray(tags):", Array.isArray(tags))
+      
+      // 标签模式 - 仅当有标签时应用过滤
+      if (tags && Array.isArray(tags) && tags.length > 0) {
+        console.log("✅ 标签数组非空，开始处理")
+        // 直接使用数组，不需要split操作
+        const tagList = tags.filter(tag => tag && tag.trim().length > 0)
+        console.log("🧹 过滤后的标签列表:", tagList)
+        
+        if (tagList.length > 0) {
+          console.log("🔨 开始构建标签条件")
+          // 找到包含指定标签的文档（通过root_id关联）
+          // 标签格式：#标签名#
+          const tagConditions = tagList.map(tag => {
+            // 确保标签格式为 #标签名#
+            let formattedTag = tag.trim()
+            if (!formattedTag.startsWith('#')) {
+              formattedTag = '#' + formattedTag
+            }
+            if (!formattedTag.endsWith('#')) {
+              formattedTag = formattedTag + '#'
+            }
+            const sqlCondition = `id IN (SELECT DISTINCT root_id FROM blocks WHERE tag = '${formattedTag}' AND root_id IS NOT NULL AND root_id != '')`
+            console.log(`🎯 标签 "${tag}" → 格式化为 "${formattedTag}" → SQL: ${sqlCondition}`)
+            return sqlCondition
+          })
+          condition = `AND (${tagConditions.join(' OR ')})`
+          console.log("🏗️ 最终标签筛选条件:", condition)
+          this.pluginInstance.logger.info(`应用标签过滤(OR逻辑)，查找包含任一标签的文档，标签列表: ${tagList.join(', ')}`)
+        } else {
+          console.log("⚠️ 标签模式但过滤后标签列表为空")
+          this.pluginInstance.logger.info(`标签模式但标签列表为空，显示所有文档`)
+        }
+      } else {
+        console.log("❌ 标签模式但无有效标签内容")
+        console.log("📋 tags:", tags)
+        this.pluginInstance.logger.info(`标签模式但无标签内容，显示所有文档`)
+      }
     }
     
     return condition
@@ -1417,6 +1555,67 @@ class IncrementalReviewer {
       this.pluginInstance.logger.error("清空所有文档数据失败", error)
       showMessage(`清空数据失败: ${error.message}`, 5000, "error")
       throw error
+    }
+  }
+
+  /**
+   * 获取所有可用标签
+   * 从数据库中获取所有存在的标签，用于下拉选择
+   */
+  public async getAllAvailableTags(): Promise<string[]> {
+    try {
+      const sql = `SELECT tag FROM blocks WHERE tag IS NOT NULL AND tag != "" GROUP BY tag ORDER BY tag`
+      const result = await this.pluginInstance.kernelApi.sql(sql)
+      
+      // 检查返回结果格式
+      if (result.code !== 0) {
+        this.pluginInstance.logger.error(`SQL执行失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        return []
+      }
+      
+      const actualData = result.data || []
+      
+      if (actualData && actualData.length > 0) {
+        // 处理标签数据，包括复合标签（如 "#展开# #练习#"）
+        const allTags = new Set<string>()
+        
+        actualData.forEach((row) => {
+          const tagValue = row.tag
+          if (tagValue) {
+            // 拆分复合标签（多个标签用空格分隔）
+            const individualTags = tagValue.split(/\s+/).filter(t => t.trim().length > 0)
+            
+            individualTags.forEach(tag => {
+              // 去除 # 前后缀，返回纯标签名
+              let cleanTag = tag.trim()
+              
+              if (cleanTag.startsWith('#')) {
+                cleanTag = cleanTag.substring(1)
+              }
+              if (cleanTag.endsWith('#')) {
+                cleanTag = cleanTag.substring(0, cleanTag.length - 1)
+              }
+              
+              if (cleanTag.length > 0) {
+                allTags.add(cleanTag)
+              }
+            })
+          }
+        })
+        
+        const tags = Array.from(allTags).sort()
+        this.pluginInstance.logger.info(`获取到 ${tags.length} 个可用标签`)
+        return tags
+      } else {
+        return []
+      }
+      
+    } catch (error) {
+      console.error("❌ getAllAvailableTags 发生错误:", error)
+      console.error("❌ 错误详情:", error.message)
+      console.error("❌ 错误堆栈:", error.stack)
+      this.pluginInstance.logger.error("获取可用标签失败", error)
+      return []
     }
   }
 }

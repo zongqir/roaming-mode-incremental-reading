@@ -18,5 +18,11 @@
   "autoResetOnStartupTip": "每次启动插件时自动清空访问记录",
   "startRandomDoc": "开始漫游",
   "continueRandomDoc": "继续漫游",
-  "resetAllVisits": "重置已访问"
+  "resetAllVisits": "重置已访问",
+  "defaultLocked": "默认上锁状态",
+  "defaultLockedTip": "开启后，编辑区默认为上锁状态（不可编辑）",
+  "lockEditArea": "锁定编辑",
+  "unlockEditArea": "解锁编辑",
+  "editAreaLocked": "已锁定",
+  "editAreaUnlocked": "可编辑"
 }

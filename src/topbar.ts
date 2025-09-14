@@ -19,7 +19,6 @@ import RandomDocContent from "./libs/RandomDocContent.svelte"
 import RandomDocSetting from "./libs/RandomDocSetting.svelte"
 import { ReviewMode } from "./models/RandomDocConfig"
 import { storeName } from "./Constants"
-import PageUtil from "./utils/pageUtil"
 
 /**
  * 1. 初始化顶栏按钮
@@ -112,116 +111,35 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
  * @param pluginInstance 插件实例
  */
 const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
-  // 3.1 检查标签页是否已存在
-  if (!pluginInstance.tabInstance) {
-    // 3.1.1 创建新标签页
-    const tabInstance = openTab({
-      app: pluginInstance.app,
-      custom: {
-        title: pluginInstance.i18n.randomDoc,
-        icon: "iconRefresh",
-        fn: pluginInstance.customTabObject,
-      } as any,
-    })
+  // 3.1 创建新标签页
+  const tabInstance = openTab({
+    app: pluginInstance.app,
+    custom: {
+      title: pluginInstance.i18n.randomDoc,
+      icon: "iconRefresh",
+      fn: pluginInstance.customTabObject,
+    } as any,
+  })
 
-    // 3.1.2 处理Promise或直接对象返回
-    if (tabInstance instanceof Promise) {
-      pluginInstance.tabInstance = await tabInstance
-    } else {
-      pluginInstance.tabInstance = tabInstance
-    }
-
-    // 3.1.3 在标签页中加载漫游组件
-    pluginInstance.tabContentInstance = new RandomDocContent({
-      target: pluginInstance.tabInstance.panelElement as HTMLElement,
-      props: {
-        pluginInstance: pluginInstance,
-      },
-    })
-
-    // 3.1.4 获取最近打开的文档并漫游
-    await roamRecentDocument(pluginInstance)
+  // 3.2 处理Promise或直接对象返回
+  if (tabInstance instanceof Promise) {
+    pluginInstance.tabInstance = await tabInstance
   } else {
-    // 3.2 标签页已存在，激活标签页并漫游最近打开的文档
-        try {
-      // 3.2.1 激活标签页
-      pluginInstance.logger.info("开始激活标签页...")
-      
-      if (pluginInstance.tabInstance) {
-        // 通过DOM操作激活标签页
-        pluginInstance.logger.info("通过DOM操作激活标签页")
-        
-        // 查找标签页头部元素并点击
-        const tabHead = document.querySelector(`[data-id="${pluginInstance.tabInstance.id}"]`)
-        if (tabHead) {
-          (tabHead as HTMLElement).click()
-          pluginInstance.logger.info("通过DOM点击激活标签页成功")
-        } else {
-          // 尝试查找所有标签页头部，找到匹配的
-          const allTabHeads = document.querySelectorAll('.item--focusable')
-          for (const tabHead of allTabHeads) {
-            const titleElement = tabHead.querySelector('.item__text')
-            if (titleElement && titleElement.textContent === pluginInstance.i18n.randomDoc) {
-              (tabHead as HTMLElement).click()
-              pluginInstance.logger.info("通过标题匹配激活标签页成功")
-              break
-            }
-          }
-        }
-      } else {
-        pluginInstance.logger.warn("标签页实例不存在")
-      }
-    } catch (error) {
-      pluginInstance.logger.error("激活标签页失败:", error)
-    }
-    
-    // 3.2.2 等待一小段时间确保标签页完全激活后再漫游
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // 3.2.3 漫游最近打开的文档
-    await roamRecentDocument(pluginInstance)
-    pluginInstance.logger.info("再次点击，漫游最近打开的文档")
+    pluginInstance.tabInstance = tabInstance
   }
+
+  // 3.3 在标签页中加载漫游组件
+  pluginInstance.tabContentInstance = new RandomDocContent({
+    target: pluginInstance.tabInstance.panelElement as HTMLElement,
+    props: {
+      pluginInstance: pluginInstance,
+    },
+  })
 }
 
-/**
- * 3.3 漫游最近打开的文档
- * 获取当前打开的文档并在渐进阅读面板中显示
- *
- * @param pluginInstance 插件实例
- */
-const roamRecentDocument = async (pluginInstance: RandomDocPlugin) => {
-  try {
-    // 3.3.1 获取最近打开的文档ID
-    const recentDocId = await PageUtil.getRecentDocId(pluginInstance)
-    
-    if (!recentDocId) {
-      showMessage("没有找到最近打开的文档", 4000, "info")
-      pluginInstance.logger.warn("无法获取最近打开的文档")
-      return
-    }
-
-    pluginInstance.logger.info(`获取到最近文档ID: ${recentDocId}`)
-
-    // 3.3.2 验证文档是否存在
-    const blockResult = await pluginInstance.kernelApi.getBlockByID(recentDocId)
-    if (!blockResult) {
-      showMessage("最近打开的文档不存在或已被删除", 4000, "info")
-      pluginInstance.logger.warn("最近打开的文档不存在")
-      return
-    }
-
-    // 3.3.3 在渐进阅读面板中显示最近打开的文档
-    await pluginInstance.tabContentInstance.roamSpecificDocument(recentDocId)
-    
-  } catch (error) {
-    pluginInstance.logger.error("漫游最近文档失败:", error)
-    showMessage("漫游最近文档失败: " + error.message, 4000, "error")
-  }
-}
 
 /**
- * 3.4 继续漫游
+ * 3.3 继续漫游
  * 在当前渐进阅读面板中启动随机漫游
  *
  * @param pluginInstance 插件实例

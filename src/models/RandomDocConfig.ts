@@ -58,6 +58,10 @@ export enum FilterMode {
   Notebook = "notebook",
   /** 1.2.2 按根文档过滤 */
   Root = "root",
+  /** 1.2.3 按标签过滤 */
+  Tag = "tag",
+  /** 1.2.4 按SQL过滤 */
+  SQL = "sql",
 }
 
 /**
@@ -108,6 +112,18 @@ class RandomDocConfig {
   rootId = ""
 
   /**
+   * 2.8.1 根文档标题
+   * 存储根文档的标题，用于显示
+   */
+  rootDocTitle = ""
+
+  /**
+   * 2.9 标签列表
+   * 当过滤模式为Tag时使用的标签数组，支持多选
+   */
+  tags: string[] = []
+
+  /**
    * 2.9 渐进模式配置ID
    * 用于存储渐进模式的配置数据
    */
@@ -126,6 +142,12 @@ class RandomDocConfig {
   public autoResetOnStartup = false
 
   /**
+   * 2.15 默认上锁状态
+   * 控制编辑区默认是否上锁，true为默认上锁，false为默认解锁
+   */
+  public defaultLocked = false
+
+  /**
    * 2.13 构造函数
    * 初始化配置对象，设置默认值
    */
@@ -135,6 +157,7 @@ class RandomDocConfig {
     this.excludeVisited = this.excludeVisited !== false
     this.autoResetOnStartup = this.autoResetOnStartup ?? false
     this.absolutePriorityProb = this.absolutePriorityProb ?? 0
+    this.defaultLocked = this.defaultLocked ?? false
   }
 
   /**

@@ -165,7 +165,7 @@
         <h2 style="color: #dc2626; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🫧 支持作者</h2>
         <p style="margin: 0.5em 0;">如果漫游式渐进阅读对您的学习有所帮助，欢迎给作者点个赞或打赏一杯咖啡，这将鼓励作者持续优化和开发更多实用功能：</p>
         <div style="margin: 1em 0; text-align: center;">
-            <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
+            <img src="https://i0.hdslb.com/bfs/openplatform/12bb6dd415d52c76318b4fb391f179e69d263a54.png@1e_1c.webp"
                  alt="打赏二维码"
                  style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <p style="margin: 0.5em 0; color: #666;">微信/支付宝</p>
@@ -174,6 +174,26 @@
     <!-- 近期更新 -->
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 近期更新</h2>
+
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.3.0版本更新 (2025.9.14)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 新增功能</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>🔒 编辑区锁定功能</strong>: 增加编辑区锁定功能，并可设置默认锁定/不锁定</li>
+<li><strong>📋 根文档选择方式</strong>: 删除打开文档后点击插件图标按钮来漫游指定文档的方式，改为使用根文档选择的方式漫游指定文档</li>
+<li><strong>🌳 文档树选择</strong>: 增强根文档筛选的功能。使用文档树选择文档，并保留直接输入ID方式</li>
+<li><strong>🎨 图标更新</strong>: 更新插件按钮图标</li>
+<li><strong>🏷️ 标签筛选</strong>: 增加基于标签的筛选功能</li>
+</ul>
+</li>
+<li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 缺陷修复</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>🔧 SQL查询修复</strong>: 修复自定义sql查询bug</li>
+<li><strong>🔄 实时同步修复</strong>: 修复漫游页面编辑区不能实时更新同步的问题，确保外部编辑后编辑区显示内容能实时更新</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
 
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v2.2.0版本更新 (2025.7.17)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">

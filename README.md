@@ -165,7 +165,7 @@
         <h2 style="color: #dc2626; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🫧 Support the Author</h2>
         <p style="margin: 0.5em 0;">If Roaming Mode Incremental Reading helps your learning, please consider giving a like or buying a coffee. This encourages the author to keep optimizing and developing more useful features:</p>
         <div style="margin: 1em 0; text-align: center;">
-            <img src="https://cdn.jsdelivr.net/gh/ebAobS/pics@main/donate.png"
+            <img src="https://i0.hdslb.com/bfs/openplatform/12bb6dd415d52c76318b4fb391f179e69d263a54.png@1e_1c.webp"
                  alt="Donation QR Code"
                  style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
             <p style="margin: 0.5em 0; color: #666;">WeChat/Alipay</p>
@@ -174,6 +174,26 @@
     <!-- Recent Updates -->
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 Recent Updates</h2>
+
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v2.3.0 Update (2025.9.14)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 New Features</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>🔒 Editor Lock Function</strong>: Added editor lock functionality with configurable default lock/unlock settings</li>
+<li><strong>📋 Root Document Selection</strong>: Removed the method of clicking plugin icon after opening document to roam specified documents, replaced with root document selection approach</li>
+<li><strong>🌳 Enhanced Document Tree</strong>: Enhanced root document filtering functionality using document tree selection while maintaining direct ID input method</li>
+<li><strong>🎨 Icon Update</strong>: Updated plugin button icon</li>
+<li><strong>🏷️ Tag-based Filtering</strong>: Added tag-based filtering functionality</li>
+</ul>
+</li>
+<li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 Bug Fixes</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>🔧 SQL Query Fix</strong>: Fixed custom SQL query bugs</li>
+<li><strong>🔄 Real-time Sync Fix</strong>: Fixed issue where roaming page editor couldn't update in real-time, ensuring editor content updates immediately after external edits</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
 
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v2.2.0 Update (2025.7.17)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">

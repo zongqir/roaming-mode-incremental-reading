@@ -183,6 +183,114 @@ class KernelApi extends BaseApi {
       throw error
     }
   }
+
+  /**
+   * 获取笔记本下的根文档列表
+   * @param notebookId 笔记本ID  
+   * @returns 根文档列表
+   */
+  public async getRootDocs(notebookId: string): Promise<SiyuanData> {
+    try {
+      // 先测试简单查询，看看该笔记本下有多少文档
+      const testStmt = `
+        SELECT id, content as title, path 
+        FROM blocks 
+        WHERE type = 'd' 
+        AND box = '${notebookId}'
+        ORDER BY updated DESC
+        LIMIT 1
+        
+      `
+      this.logger.info(`测试查询笔记本 ${notebookId} 下的文档:`, testStmt)
+      const testResult = await this.sql(testStmt)
+      this.logger.info(`测试结果:`, testResult)
+      
+      // 如果测试查询有结果，再尝试根文档查询
+      if (testResult.data && testResult.data.length > 0) {
+        // 修改根文档查询逻辑 - 查找路径层级较浅的文档
+        const stmt = `
+          SELECT id, content as title, path 
+          FROM blocks 
+          WHERE type = 'd' 
+          AND box = '${notebookId}'
+          AND content IS NOT NULL 
+          AND content != ''
+          ORDER BY length(path), updated DESC
+          LIMIT 200
+        `
+        this.logger.info(`根文档查询:`, stmt)
+        return await this.sql(stmt)
+      } else {
+        this.logger.warn(`笔记本 ${notebookId} 下没有找到任何文档`)
+        return { code: 0, msg: "", data: [] }
+      }
+    } catch (error) {
+      this.logger.error("获取根文档列表失败:", error)
+      throw error
+    }
+  }
+
+  /**
+   * 获取文档的子文档列表
+   * @param parentId 父文档ID
+   * @param notebookId 笔记本ID
+   * @returns 子文档列表
+   */
+  public async getChildDocs(parentId: string, notebookId: string): Promise<SiyuanData> {
+    try {
+      const stmt = `
+        SELECT id, content as title, path 
+        FROM blocks 
+        WHERE type = 'd' 
+        AND box = '${notebookId}'
+        AND path LIKE '%${parentId}%'
+        AND id != '${parentId}'
+        AND content IS NOT NULL 
+        AND content != ''
+        ORDER BY length(path), updated DESC
+        LIMIT 100
+      `
+      this.logger.info(`子文档查询:`, stmt)
+      return await this.sql(stmt)
+    } catch (error) {
+      this.logger.error("获取子文档列表失败:", error)
+      throw error
+    }
+  }
+
+  /**
+   * 根据文档ID获取文档标题
+   * @param docId 文档ID
+   * @returns 文档标题
+   */
+  public async getDocTitle(docId: string): Promise<string> {
+    try {
+      const stmt = `
+        SELECT content as title 
+        FROM blocks 
+        WHERE id = '${docId}' 
+        AND type = 'd'
+        LIMIT 1
+      `
+      const result = await this.sql(stmt)
+      
+      if (result.code !== 0) {
+        this.logger.error(`获取文档标题失败，错误码: ${result.code}, 错误信息: ${result.msg}`)
+        return ""
+      }
+
+      const data = result.data as any[]
+      if (data && data.length > 0 && data[0].title) {
+        return data[0].title
+      } else {
+        this.logger.warn(`文档 ${docId} 没有找到标题`)
+        return ""
+      }
+    } catch (error) {
+      this.logger.error("获取文档标题失败:", error)
+      return ""
+    }
+  }
 }
 
 export default KernelApi

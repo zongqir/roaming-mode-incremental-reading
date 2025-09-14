@@ -6,6 +6,7 @@
   import { showMessage, Dialog } from "siyuan"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import type { Metric } from "../models/IncrementalConfig"
+  import { isLocked, toggleLock, setLocked } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -18,6 +19,7 @@
   let excludeVisited = true
   let autoResetOnStartup = false
   let absolutePriorityProb = 0;
+  let defaultLocked = false;
   
   // 渐进模式配置相关
   let reviewer: IncrementalReviewer
@@ -57,51 +59,60 @@
       storeConfig.excludeVisited = excludeVisited
       storeConfig.autoResetOnStartup = autoResetOnStartup
       storeConfig.absolutePriorityProb = Math.max(0, Math.min(1, Number(absolutePriorityProb)))
+      storeConfig.defaultLocked = defaultLocked
       await pluginInstance.saveData(storeName, storeConfig)
       
-      // 如果是渐进模式，保存渐进配置
-      if (reviewMode === "incremental" && reviewer) {
+      // 保存渐进配置
+      if (reviewer) {
         await reviewer.saveIncrementalConfig()
         
-        // 开始处理文档，显示进度条
-        isProcessing = true
-        processProgress = 0
-        processCurrent = 0
-        processTotal = 0
-        
-        // 查找所有指标值为0的文档，将它们改为默认值5
-        const repairResult = await reviewer.repairAllDocumentMetrics((current, total) => {
-          processCurrent = current
-          processTotal = total
-          processProgress = Math.floor((current / total) * 100)
-        })
-        
-        // 重置进度状态
-        isProcessing = false
-        
-        // 格式化统计信息
-        const stats = []
-        if (repairResult.updatedDocs > 0) {
-          // 添加修复的指标信息
-          if (repairResult.updatedMetrics.length > 0) {
-            const updatedMetricsSummary = repairResult.updatedMetrics
-              .filter(m => m.count > 0)
-              .map(m => `"${m.name}"(${m.count}篇)`)
-              .join("、")
-            stats.push(`修复了${repairResult.updatedMetrics.reduce((sum, m) => sum + m.count, 0)}个指标值(${updatedMetricsSummary})`)
-        }
-        
-          // 添加删除的指标信息
-          if (repairResult.deletedMetricsCount > 0) {
-            stats.push(`删除了${repairResult.deletedMetricsCount}个无效指标`)
-          }
+        // 只有在文档指标配置栏(activeTab === 1)才执行文档指标修复
+        if (activeTab === 1) {
+          // 开始处理文档，显示进度条
+          isProcessing = true
+          processProgress = 0
+          processCurrent = 0
+          processTotal = 0
           
-          // 显示总结信息
-          const statsSummary = stats.join("，")
-          pluginInstance.logger.info(`已处理${repairResult.totalDocs}篇文档，${repairResult.updatedDocs}篇被更新。${statsSummary}`)
-          showMessage(`已处理${repairResult.totalDocs}篇文档，${repairResult.updatedDocs}篇被更新。${statsSummary}`, 7000)
-      } else {
-          showMessage(`已处理${repairResult.totalDocs}篇文档，所有文档指标都已正确设置`, 3000)
+          // 查找所有指标值为0的文档，将它们改为默认值5
+          const repairResult = await reviewer.repairAllDocumentMetrics((current, total) => {
+            processCurrent = current
+            processTotal = total
+            processProgress = Math.floor((current / total) * 100)
+          })
+          
+          // 重置进度状态
+          isProcessing = false
+          
+          // 格式化统计信息
+          const stats = []
+          if (repairResult.updatedDocs > 0) {
+            // 添加修复的指标信息
+            if (repairResult.updatedMetrics.length > 0) {
+              const updatedMetricsSummary = repairResult.updatedMetrics
+                .filter(m => m.count > 0)
+                .map(m => `"${m.name}"(${m.count}篇)`)
+                .join("、")
+              stats.push(`修复了${repairResult.updatedMetrics.reduce((sum, m) => sum + m.count, 0)}个指标值(${updatedMetricsSummary})`)
+            }
+          
+            // 添加删除的指标信息
+            if (repairResult.deletedMetricsCount > 0) {
+              stats.push(`删除了${repairResult.deletedMetricsCount}个无效指标`)
+            }
+            
+            // 添加优先级计算信息
+            if (repairResult.updatedPriorities > 0) {
+              stats.push(`重新计算了${repairResult.updatedPriorities}个文档的优先级`)
+            }
+            
+            // 显示总结信息
+            const statsSummary = stats.join("，")
+            pluginInstance.logger.info(`已处理${repairResult.totalDocs}篇文档，${repairResult.updatedDocs}篇被更新。${statsSummary}`)
+            showMessage(`已处理${repairResult.totalDocs}篇文档，${repairResult.updatedDocs}篇被更新。${statsSummary}`, 7000)
+          } else {
+            showMessage(`已处理${repairResult.totalDocs}篇文档，所有文档指标都已正确设置`, 3000)
+          }
         }
       }
 
@@ -382,6 +393,7 @@
     excludeVisited = storeConfig?.excludeVisited !== false
     autoResetOnStartup = storeConfig?.autoResetOnStartup ?? false
     absolutePriorityProb = typeof storeConfig?.absolutePriorityProb === 'number' ? storeConfig.absolutePriorityProb : 0;
+    defaultLocked = storeConfig?.defaultLocked ?? false;
     sqlContent =
       storeConfig?.sql ??
       JSON.stringify([
@@ -424,9 +436,18 @@
 
 <div class="random-doc-setting">
   <div class="config__tab-header">
-    {#each tabList as tab, idx}
-      <div class="tab-item {activeTab === idx ? 'active' : ''}" on:click={() => activeTab = idx}>{tab}</div>
-    {/each}
+    <div class="tab-items">
+      {#each tabList as tab, idx}
+        <div class="tab-item {activeTab === idx ? 'active' : ''}" on:click={() => activeTab = idx}>{tab}</div>
+      {/each}
+    </div>
+    <button class="lock-btn" on:click={toggleLock} title={$isLocked ? pluginInstance.i18n.unlockEditArea : pluginInstance.i18n.lockEditArea}>
+      {#if $isLocked}
+        🔒
+      {:else}
+        🔓
+      {/if}
+    </button>
   </div>
   <div class="config__tab-container">
     {#if activeTab === 0}
@@ -448,6 +469,8 @@
                     if (String(absolutePriorityProb) === '' || isNaN(Number(absolutePriorityProb))) absolutePriorityProb = 0;
                     else absolutePriorityProb = Math.max(0, Math.min(1, Number(absolutePriorityProb)));
                   }}
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
               </div>
               <p class="help-text">设置为0则禁用，设置为0.2表示20%的概率直接漫游优先级最高的未访问文档。范围0~1。</p>
@@ -460,8 +483,22 @@
                 <input
                   type="checkbox"
                   bind:checked={autoResetOnStartup}
+                  disabled={$isLocked}
                 />
                 开启后，每次启动自动清空已访问文档记录
+              </label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <h4 class="setting-title">{pluginInstance.i18n.defaultLocked}</h4>
+              <label>
+                <input
+                  type="checkbox"
+                  bind:checked={defaultLocked}
+                  disabled={$isLocked}
+                />
+                {pluginInstance.i18n.defaultLockedTip}
               </label>
             </div>
           </div>
@@ -472,6 +509,7 @@
                 <input
                   type="checkbox"
                   bind:checked={customSqlEnabled}
+                  disabled={$isLocked}
                 />
                 启用后可自定义SQL筛选文档
               </label>
@@ -487,6 +525,8 @@
                   bind:value={sqlContent}
                   rows="4"
                   placeholder={pluginInstance.i18n.sqlContentTip}
+                  disabled={$isLocked}
+                  readonly={$isLocked}
                 />
                 <p class="help-text">{pluginInstance.i18n.sqlContentTip}</p>
               </div>
@@ -905,8 +945,45 @@
 
   .config__tab-header {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     border-bottom: 1px solid var(--b3-border-color);
     margin-bottom: 12px;
+  }
+
+  .tab-items {
+    display: flex;
+  }
+
+  .lock-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+    margin-left: auto;
+  }
+
+  .lock-btn:hover {
+    opacity: 1;
+    background-color: var(--b3-theme-surface-light);
+  }
+
+  /* 禁用状态样式 */
+  input:disabled,
+  textarea:disabled,
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  input:readonly,
+  textarea:readonly {
+    background-color: var(--b3-theme-surface-light);
+    color: var(--b3-theme-on-surface-light);
   }
   .tab-item {
     padding: 8px 24px;

@@ -91,7 +91,12 @@
           // 添加删除的指标信息
           if (repairResult.deletedMetricsCount > 0) {
             stats.push(`删除了${repairResult.deletedMetricsCount}个无效指标`)
-      }
+          }
+          
+          // 添加优先级计算信息
+          if (repairResult.updatedPriorities > 0) {
+            stats.push(`重新计算了${repairResult.updatedPriorities}个文档的优先级`)
+          }
       
       // 显示总结信息
           const statsSummary = stats.join("，")

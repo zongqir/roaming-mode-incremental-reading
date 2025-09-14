@@ -72,6 +72,7 @@
   
   let title = pluginInstance.i18n.welcomeTitle
   let tips = pluginInstance.i18n.welcomeTips
+  let fullTips = pluginInstance.i18n.welcomeTips // 完整的tips内容，包含诗意部分
   let currentRndId
   let unReviewedCount = 0
   let content = ""
@@ -101,6 +102,9 @@
   let showPriorityDialog = false
   let priorityLoading = false
   let priorityList: any[] = []
+
+  // 新增：移动端指标弹窗相关
+  let showMobileMetricsDialog = false
 
   // 拖动排序相关
   let draggedItem: any = null
@@ -404,7 +408,7 @@
           // 初始化可编辑内容
           await initEditableContent()
           
-          tips = `展卷乃无言的情意：通过自定义SQL查询邂逅此文，穿越星辰遇见你，三秋霜雪印马蹄。`
+          setTips(`展卷乃无言的情意：通过自定义SQL查询邂逅此文，穿越星辰遇见你，三秋霜雪印马蹄。`)
           
           isLoading = false
           return
@@ -564,9 +568,9 @@
           pluginInstance.logger.error("获取优先级排序位次失败:", error)
           rankText = "计算出错"
         }
-        tips = `展卷乃无言的情意：缘自优先级第${rankText}的顺序，穿越星辰遇见你，三秋霜雪印马蹄。${total}篇文档已剩${remainingCount}。`
+        setTips(`展卷乃无言的情意：缘自优先级第${rankText}的顺序，穿越星辰遇见你，三秋霜雪印马蹄。${total}篇文档已剩${remainingCount}。`)
       } else {
-        tips = `展卷乃无言的情意：以${selectionProbabilityText}的机遇，穿越星辰遇见你，三秋霜雪印马蹄。${total}篇文档已剩${remainingCount}。`
+        setTips(`展卷乃无言的情意：以${selectionProbabilityText}的机遇，穿越星辰遇见你，三秋霜雪印马蹄。${total}篇文档已剩${remainingCount}。`)
       }
       
       // 增加文档的漫游次数
@@ -699,7 +703,7 @@
         }
       }
       
-      tips = `展卷乃无言的情意：穿越星辰遇见你，三秋霜雪印马蹄。正在漫游指定文档。`
+      setTips(`展卷乃无言的情意：穿越星辰遇见你，三秋霜雪印马蹄。正在漫游指定文档。`)
       
       // 增加文档的漫游次数
       try {
@@ -956,6 +960,28 @@
   function closePriorityDialog() {
     showPriorityDialog = false
   }
+
+  // 移动端指标弹窗相关函数
+  function openMobileMetricsDialog() {
+    showMobileMetricsDialog = true
+  }
+
+  function closeMobileMetricsDialog() {
+    showMobileMetricsDialog = false
+  }
+
+  // 处理tips显示的函数
+  function setTips(fullTipsContent: string) {
+    fullTips = fullTipsContent
+    if (pluginInstance.isMobile) {
+      // 移动端：移除诗意部分，只保留核心信息
+      tips = fullTipsContent.replace(/展卷乃无言的情意：/, '').replace(/，穿越星辰遇见你，三秋霜雪印马蹄。/, '')
+    } else {
+      // 桌面端：显示完整内容
+      tips = fullTipsContent
+    }
+  }
+
   // 热力色条：优先级归一化，红-高，蓝-低
   function getHeatColor(priority: number, min: number, max: number) {
     if (max === min) return 'rgb(128,128,255)';
@@ -1966,7 +1992,16 @@ const initEditableContent = async () => {
               继续漫游
             {/if}
           </button>
-          <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
+          <!-- 桌面端显示打开文档按钮 -->
+          {#if !pluginInstance.isMobile}
+            <button class="action-item b3-button primary-btn btn-small" on:click={openDocEditor}>打开该文档</button>
+          {/if}
+          <!-- 移动端显示查看指标按钮 -->
+          {#if pluginInstance.isMobile}
+            <button class="action-item b3-button b3-button--outline btn-small" on:click={openMobileMetricsDialog} title="查看文档指标和统计信息">
+              查看指标
+            </button>
+          {/if}
           <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
             已漫游文档
           </button>
@@ -2083,7 +2118,7 @@ const initEditableContent = async () => {
         </div>
       {/if}
 
-      {#if currentRndId}
+      {#if currentRndId && !pluginInstance.isMobile}
         <MetricsPanel
           pluginInstance={pluginInstance}
           docId={currentRndId}
@@ -2103,6 +2138,52 @@ const initEditableContent = async () => {
           on:change={handlePriorityBarChange}
           on:openDocument={handleOpenDocument}
         />
+      {/if}
+
+      <!-- 移动端指标弹窗 -->
+      {#if showMobileMetricsDialog && pluginInstance.isMobile}
+        <div class="visited-dialog-mask" on:click={closeMobileMetricsDialog}></div>
+        <div class="mobile-metrics-dialog">
+          <div class="visited-dialog-header">
+            <span>文档指标信息</span>
+            <button class="close-btn" on:click={closeMobileMetricsDialog}>×</button>
+          </div>
+          <div class="mobile-metrics-content">
+            {#if currentRndId}
+              
+              <!-- 文档指标面板 -->
+              <div class="mobile-metrics-panel">
+                <MetricsPanel
+                  pluginInstance={pluginInstance}
+                  docId={currentRndId}
+                  reviewer={pr}
+                  metrics={docMetrics}
+                  {docPriority}
+                  on:priorityChange={handleMetricsPanelPriorityChange}
+                />
+              </div>
+              
+              <!-- 优先级分布图 -->
+              <div class="mobile-priority-chart">
+                <h4>优先级分布图</h4>
+                <PriorityBarChart
+                  points={priorityBarPoints}
+                  currentId={currentRndId}
+                  minPriority={priorityBarMin}
+                  maxPriority={priorityBarMax}
+                  height={48}
+                  on:dragging={handlePriorityBarDragging}
+                  on:change={handlePriorityBarChange}
+                  on:openDocument={handleOpenDocument}
+                />
+              </div>
+            {:else}
+              <div class="no-metrics-info">
+                <p>当前没有选中的文档，无法显示指标信息。</p>
+              </div>
+            {/if}
+          </div>
+        </div>
       {/if}
 
       <div class="rnd-doc-custom-tips">
@@ -2307,8 +2388,6 @@ const initEditableContent = async () => {
 {/if}
 
 <style lang="stylus">
-  .fr
-    float right
 
   .custom-sql
     margin-left 10px
@@ -2377,9 +2456,6 @@ const initEditableContent = async () => {
     position: relative
     display: inline-block
     
-  .notebook-buttons
-    display: flex
-    gap: 8px
     
   .notebook-list
     position: absolute
@@ -2413,17 +2489,6 @@ const initEditableContent = async () => {
     justify-content: center
     margin-top: 8px
 
-  .content-area
-    cursor: pointer
-    transition: background-color 0.2s ease
-    padding: 16px
-    border-radius: 6px
-    border: 1px solid var(--b3-border-color)
-    margin: 16px 0
-    
-    &:hover
-      background-color: var(--b3-list-hover)
-      border-color: var(--b3-theme-primary)
 
   .editable-content-area
     min-height: 400px
@@ -2503,6 +2568,47 @@ const initEditableContent = async () => {
     text-decoration underline
     &:hover
       color var(--b3-theme-primary-light)
+
+  /* 移动端指标弹窗样式 */
+  .mobile-metrics-dialog
+    position fixed
+    top 50%
+    left 50%
+    transform translate(-50%, -50%)
+    background var(--b3-theme-background)
+    border 1px solid var(--b3-border-color)
+    border-radius 6px
+    box-shadow 0 4px 20px rgba(0, 0, 0, 0.15)
+    z-index 1001
+    width 90vw
+    max-height 85vh
+    overflow-y auto
+    padding 20px
+
+  .mobile-metrics-content
+    margin-top 15px
+
+  .mobile-metrics-panel
+    margin-bottom 20px
+    border 1px solid var(--b3-border-color)
+    border-radius 6px
+    padding 10px
+
+  .mobile-priority-chart
+    h4
+      margin 0 0 10px 0
+      color var(--b3-theme-on-surface)
+      font-size 14px
+      font-weight 500
+
+  .no-metrics-info
+    text-align center
+    padding 40px 20px
+    color var(--b3-theme-on-surface-light)
+    
+    p
+      margin 0
+      font-size 14px
 
   /* 优先级排序列表中的调整控件样式 */
   .priority-edit-group

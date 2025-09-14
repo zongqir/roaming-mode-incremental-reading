@@ -63,6 +63,8 @@ export default class RandomDocPlugin extends Plugin {
   public tabInstance
   /** 1.6 标签页内容实例引用 */
   public tabContentInstance
+  /** 1.7 移动端对话框引用 */
+  public mobileDialog
 
   /**
    * 1.7 插件构造函数

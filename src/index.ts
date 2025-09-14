@@ -43,6 +43,7 @@ import "../index.styl"
 import { isDev } from "./Constants"
 import { initTopbar, registerCommand } from "./topbar"
 import KernelApi from "./api/kernel-api"
+import IncrementalReviewer from "./service/IncrementalReviewer"
 
 /**
  * 1. 漫游式渐进阅读插件类
@@ -90,6 +91,17 @@ export default class RandomDocPlugin extends Plugin {
     await initTopbar(this)
     // 2.2 注册插件命令（快捷键）
     await registerCommand(this)
+  }
+
+  /**
+   * 2.1 插件卸载方法
+   * 当插件被关闭或应用退出时调用，用于清理资源
+   */
+  onunload() {
+    // 2.1.1 清理文档总数缓存
+    IncrementalReviewer.clearAllCache()
+    
+    this.logger.info("插件已卸载，缓存已清理")
   }
 
   // openSetting() {

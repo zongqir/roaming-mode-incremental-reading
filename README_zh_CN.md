@@ -165,15 +165,36 @@
         <h2 style="color: #dc2626; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🫧 支持作者</h2>
         <p style="margin: 0.5em 0;">如果漫游式渐进阅读对您的学习有所帮助，欢迎给作者点个赞或打赏一杯咖啡，这将鼓励作者持续优化和开发更多实用功能：</p>
         <div style="margin: 1em 0; text-align: center;">
-            <img src="https://i0.hdslb.com/bfs/openplatform/12bb6dd415d52c76318b4fb391f179e69d263a54.png@1e_1c.webp"
-                 alt="打赏二维码"
-                 style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <p style="margin: 0.5em 0; color: #666;">微信/支付宝</p>
+            <div style="display: flex; justify-content: center; gap: 2em; flex-wrap: wrap;">
+                <div>
+                    <img src="https://i0.hdslb.com/bfs/openplatform/12bb6dd415d52c76318b4fb391f179e69d263a54.png@1e_1c.webp"
+                         alt="打赏二维码 - 核心代码和桌面端开发者"
+                         style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <p style="margin: 0.5em 0; color: #666;">核心代码和桌面端开发者<br>微信/支付宝</p>
+                </div>
+                <div>
+                    <img src="https://i0.hdslb.com/bfs/openplatform/3b4d37a5285096d3493d09ca88280d9acf90129e.png@1e_1c.webp"
+                         alt="打赏二维码 - 移动端开发者"
+                         style="width: 280px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <p style="margin: 0.5em 0; color: #666;">移动端开发者<br>微信/支付宝</p>
+                </div>
+            </div>
         </div>
     </div>
     <!-- 近期更新 -->
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 近期更新</h2>
+
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v3.0.0版本更新 (2025.9.15)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 新增功能</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📱 移动端版本</strong>: 上线移动端版本，支持手机和平板设备</li>
+<li><strong>⚡ 性能优化</strong>: 全面优化插件性能，提升响应速度和稳定性</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
 
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v2.3.0版本更新 (2025.9.14)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">

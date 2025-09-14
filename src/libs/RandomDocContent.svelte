@@ -915,7 +915,7 @@
       const docPriorities = await pr.batchGetDocumentPriorities(docIds)
       
       // 并发获取标题
-      const batchSize = 20
+      const batchSize = 3000
       let tempList: Array<{id: string, title: string, priority: number, visited: boolean}> = []
       for (let i = 0; i < allDocs.length; i += batchSize) {
         const batch = allDocs.slice(i, i + batchSize)

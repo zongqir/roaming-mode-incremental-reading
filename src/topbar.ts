@@ -111,30 +111,87 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
  * @param pluginInstance 插件实例
  */
 const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
-  // 3.1 创建新标签页
-  const tabInstance = openTab({
-    app: pluginInstance.app,
-    custom: {
-      title: pluginInstance.i18n.randomDoc,
-      icon: "iconRefresh",
-      fn: pluginInstance.customTabObject,
-    } as any,
-  })
+  try {
+    // 3.1 移动端使用对话框模式，桌面端使用标签页模式
+    if (pluginInstance.isMobile) {
+      // 移动端：使用对话框替代标签页
+      const dialogId = "mobile-random-doc-dialog"
+      const dialog = new Dialog({
+        title: pluginInstance.i18n.randomDoc,
+        content: `<div id="${dialogId}" style="height: 70vh; overflow: auto;"></div>`,
+        width: "92vw",
+        height: "80vh"
+      })
+      
+      // 等待对话框DOM渲染
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      const dialogElement = document.getElementById(dialogId)
+      if (!dialogElement) {
+        pluginInstance.logger.error("Mobile dialog element not found")
+        showMessage("移动端界面初始化失败", 3000, "error")
+        return
+      }
+      
+      // 创建漫游内容组件
+      pluginInstance.tabContentInstance = new RandomDocContent({
+        target: dialogElement,
+        props: {
+          pluginInstance: pluginInstance,
+        },
+      })
+      
+      // 保存对话框引用以便后续操作
+      pluginInstance.mobileDialog = dialog
+      pluginInstance.logger.info("Mobile roaming dialog created successfully")
+      
+    } else {
+      // 桌面端：使用标签页模式
+      const tabInstance = openTab({
+        app: pluginInstance.app,
+        custom: {
+          title: pluginInstance.i18n.randomDoc,
+          icon: "iconRefresh",
+          fn: pluginInstance.customTabObject,
+        } as any,
+      })
 
-  // 3.2 处理Promise或直接对象返回
-  if (tabInstance instanceof Promise) {
-    pluginInstance.tabInstance = await tabInstance
-  } else {
-    pluginInstance.tabInstance = tabInstance
+      // 3.2 处理Promise或直接对象返回
+      if (tabInstance instanceof Promise) {
+        pluginInstance.tabInstance = await tabInstance
+      } else {
+        pluginInstance.tabInstance = tabInstance
+      }
+
+      // 3.2.1 等待标签页完全初始化
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // 3.3 在标签页中加载漫游组件
+      // 添加空值检查以防止错误
+      if (!pluginInstance.tabInstance || !pluginInstance.tabInstance.panelElement) {
+        pluginInstance.logger.error("Tab instance or panelElement is not available", {
+          hasTabInstance: !!pluginInstance.tabInstance,
+          hasPanelElement: !!(pluginInstance.tabInstance && pluginInstance.tabInstance.panelElement),
+          isMobile: pluginInstance.isMobile
+        })
+        showMessage("标签页初始化失败，请重试", 3000, "error")
+        return
+      }
+      
+      pluginInstance.tabContentInstance = new RandomDocContent({
+        target: pluginInstance.tabInstance.panelElement as HTMLElement,
+        props: {
+          pluginInstance: pluginInstance,
+        },
+      })
+    }
+    
+    pluginInstance.logger.info(`Roaming ${pluginInstance.isMobile ? 'dialog' : 'tab'} created successfully`)
+    
+  } catch (error) {
+    pluginInstance.logger.error("Failed to create roaming interface:", error)
+    showMessage("创建漫游界面失败: " + error.message, 3000, "error")
   }
-
-  // 3.3 在标签页中加载漫游组件
-  pluginInstance.tabContentInstance = new RandomDocContent({
-    target: pluginInstance.tabInstance.panelElement as HTMLElement,
-    props: {
-      pluginInstance: pluginInstance,
-    },
-  })
 }
 
 
@@ -146,48 +203,102 @@ const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
  */
 const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
   try {
-    if (!pluginInstance.tabInstance || !pluginInstance.tabContentInstance) {
+    // 检查是否存在漫游实例
+    if (!pluginInstance.tabContentInstance) {
       // 如果面板不存在，先创建面板
       await triggerRandomDoc(pluginInstance)
       return
     }
     
-    // 确保标签页激活
-    try {
-      const tabHead = document.querySelector(`[data-id="${pluginInstance.tabInstance.id}"]`)
-      if (tabHead) {
-        (tabHead as HTMLElement).click()
+    if (pluginInstance.isMobile) {
+      // 移动端：检查对话框是否存在
+      if (!pluginInstance.mobileDialog) {
+        await triggerRandomDoc(pluginInstance)
+        return
       }
-    } catch (error) {
-      pluginInstance.logger.error("激活标签页失败:", error)
-    }
-    
-    // 等待一小段时间确保标签页完全激活
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // 模拟点击"继续漫游"按钮
-    try {
-      // 找到"继续漫游"按钮并点击
-      const buttons = pluginInstance.tabInstance.panelElement.querySelectorAll('button.primary-btn');
-      let continueButtonFound = false;
       
-      for (let i = 0; i < buttons.length; i++) {
-        const btn = buttons[i];
-        // 查找按钮文本是"继续漫游"或包含"漫游中"的按钮
-        if (btn.textContent.includes('继续漫游') || btn.textContent.includes('漫游中')) {
-          (btn as HTMLElement).click();
-          pluginInstance.logger.info("成功模拟点击继续漫游按钮");
-          continueButtonFound = true;
-          break;
+      // 移动端直接调用漫游实例的方法，无需激活标签页
+      try {
+        // 模拟点击"继续漫游"按钮 - 在对话框内查找
+        const dialogElement = document.getElementById("mobile-random-doc-dialog")
+        if (dialogElement) {
+          const buttons = dialogElement.querySelectorAll('button.primary-btn');
+          let continueButtonFound = false;
+          
+          for (let i = 0; i < buttons.length; i++) {
+            const btn = buttons[i];
+            if (btn.textContent && (btn.textContent.includes('继续漫游') || btn.textContent.includes('漫游中'))) {
+              (btn as HTMLElement).click();
+              pluginInstance.logger.info("移动端：成功模拟点击继续漫游按钮");
+              continueButtonFound = true;
+              break;
+            }
+          }
+          
+          if (!continueButtonFound) {
+            showMessage("未找到继续漫游按钮，请手动点击对话框中的继续漫游按钮", 3000, "info");
+          }
+        } else {
+          showMessage("移动端对话框未找到，请重新打开漫游功能", 3000, "error");
         }
+      } catch (error) {
+        pluginInstance.logger.error("移动端模拟点击继续漫游按钮失败:", error);
+        showMessage("无法执行继续漫游，请手动点击对话框中的继续漫游按钮", 3000, "info");
       }
       
-      if (!continueButtonFound) {
-        showMessage("未找到继续漫游按钮，请手动点击面板中的继续漫游按钮", 3000, "info");
+    } else {
+      // 桌面端：标签页模式
+      if (!pluginInstance.tabInstance) {
+        await triggerRandomDoc(pluginInstance)
+        return
       }
-    } catch (error) {
-      pluginInstance.logger.error("模拟点击继续漫游按钮失败:", error);
-      showMessage("无法执行继续漫游，请手动点击面板中的继续漫游按钮", 3000, "info");
+      
+      // 确保标签页激活
+      try {
+        if (pluginInstance.tabInstance && pluginInstance.tabInstance.id) {
+          const tabHead = document.querySelector(`[data-id="${pluginInstance.tabInstance.id}"]`)
+          if (tabHead) {
+            (tabHead as HTMLElement).click()
+          }
+        }
+      } catch (error) {
+        pluginInstance.logger.error("激活标签页失败:", error)
+      }
+      
+      // 等待一小段时间确保标签页完全激活
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // 模拟点击"继续漫游"按钮
+      try {
+        // 检查 tabInstance 和 panelElement 是否存在
+        if (!pluginInstance.tabInstance || !pluginInstance.tabInstance.panelElement) {
+          pluginInstance.logger.error("Tab instance or panelElement is not available for button click")
+          showMessage("面板未正确初始化，无法执行继续漫游", 3000, "error")
+          return
+        }
+        
+        // 找到"继续漫游"按钮并点击
+        const buttons = pluginInstance.tabInstance.panelElement.querySelectorAll('button.primary-btn');
+        let continueButtonFound = false;
+        
+        for (let i = 0; i < buttons.length; i++) {
+          const btn = buttons[i];
+          // 查找按钮文本是"继续漫游"或包含"漫游中"的按钮
+          if (btn.textContent && (btn.textContent.includes('继续漫游') || btn.textContent.includes('漫游中'))) {
+            (btn as HTMLElement).click();
+            pluginInstance.logger.info("桌面端：成功模拟点击继续漫游按钮");
+            continueButtonFound = true;
+            break;
+          }
+        }
+        
+        if (!continueButtonFound) {
+          showMessage("未找到继续漫游按钮，请手动点击面板中的继续漫游按钮", 3000, "info");
+        }
+      } catch (error) {
+        pluginInstance.logger.error("桌面端模拟点击继续漫游按钮失败:", error);
+        showMessage("无法执行继续漫游，请手动点击面板中的继续漫游按钮", 3000, "info");
+      }
     }
   } catch (error) {
     pluginInstance.logger.error("继续漫游失败:", error);

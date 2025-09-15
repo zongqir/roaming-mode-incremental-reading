@@ -2597,7 +2597,17 @@ const initEditableContent = async () => {
     .action-btn-group .notebook-selector,
     .action-btn-group .tag-selector {
       order: 1;
-      flex: 0 0 50%;  /* 固定50%宽度 */
+      width: auto !important;  /* 宽度自适应内容 */
+      flex: 0 0 auto !important;  /* 不参与flex分配，完全自适应 */
+      min-width: auto !important;  /* 移除最小宽度限制 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+    }
+    
+    .action-btn-group .help-icon {
+      order: 3 !important;  /* 设置图标在第三行 */
+      flex: 0 0 15%;  /* 设置图标固定占15% */
+      min-height: 3vh !important;  /* 与其他按钮保持一致的高度 */
+      padding: 0.3vh 0.2vw !important;  /* 减少内边距 */
     }
     
     /* 第二个筛选按钮在超小屏幕：占满父容器 - 使用更高特异性覆盖fn__size150 */

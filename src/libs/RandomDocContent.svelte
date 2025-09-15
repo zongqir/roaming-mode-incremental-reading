@@ -70,9 +70,9 @@
   let showManualInput = false // 是否显示手动输入框
   let manualInputId = "" // 手动输入的ID
   
-  let title = pluginInstance.i18n.welcomeTitle
-  let tips = pluginInstance.i18n.welcomeTips
-  let fullTips = pluginInstance.i18n.welcomeTips // 完整的tips内容，包含诗意部分
+  let title = "漫游式渐进阅读"
+  let tips = "欢迎使用漫游式渐进阅读插件"
+  let fullTips = "欢迎使用漫游式渐进阅读插件" // 完整的tips内容，包含诗意部分
   let currentRndId
   let unReviewedCount = 0
   let content = ""
@@ -1839,7 +1839,7 @@ const initEditableContent = async () => {
 <div class="fn__flex-1 protyle" data-loading="finished">
   <!-- 移除Loading组件 -->
   <div class="protyle-content protyle-content--transition" data-fullwidth="true">
-    <div class="protyle-title protyle-wysiwyg--attr" style="margin: 16px 96px 0px;">
+    <div class="protyle-title protyle-wysiwyg--attr" style="margin: 16px 96px 0px; display: none !important;">
       <div
         style="margin:20px 0"
         contenteditable="false"
@@ -1998,18 +1998,18 @@ const initEditableContent = async () => {
           {/if}
           <!-- 移动端显示查看指标按钮 -->
           {#if pluginInstance.isMobile}
-            <button class="action-item b3-button b3-button--outline btn-small" on:click={openMobileMetricsDialog} title="查看文档指标和统计信息">
+            <button class="action-item b3-button b3-button--outline btn-small mobile-btn" on:click={openMobileMetricsDialog} title="查看文档指标和统计信息">
               查看指标
             </button>
           {/if}
-          <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
+          <button class="action-item b3-button b3-button--outline btn-small reset-button mobile-btn" on:click={openVisitedDocs} title="查看已漫游文档列表">
             已漫游文档
           </button>
-          <button class="action-item b3-button b3-button--outline btn-small" on:click={openPriorityDialog} title="优先级排序列表">
+          <button class="action-item b3-button b3-button--outline btn-small mobile-btn" on:click={openPriorityDialog} title="优先级排序列表">
             优先级排序表
           </button>
           <button
-            class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+            class="action-item b3-button b3-button--outline btn-small light-btn help-icon mobile-btn"
             on:click={() => showSettingMenu(pluginInstance)}
             title={pluginInstance.i18n.setting}
           >
@@ -2198,12 +2198,12 @@ const initEditableContent = async () => {
       </div>
       <div class="editable-area-container">
         <div class="editable-header">
-          <span class="editable-title">编辑区域</span>
+          <span class="editable-title">{pluginInstance.isMobile ? title : "编辑区域"}</span>
           <button class="lock-toggle-btn" on:click={toggleLock} title={$isLocked ? pluginInstance.i18n.unlockEditArea : pluginInstance.i18n.lockEditArea}>
             {#if $isLocked}
-              🔒 {pluginInstance.i18n.editAreaLocked}
+              🔒
             {:else}
-              🔓 {pluginInstance.i18n.editAreaUnlocked}
+              🔓
             {/if}
           </button>
         </div>
@@ -2403,6 +2403,306 @@ const initEditableContent = async () => {
 
     .action-item
       margin-left 3px
+
+  /* 手机端3行布局 - 基于屏幕比例设计 */
+  @media (max-width: 768px) {
+    .action-btn-group {
+      display: flex;
+      flex-wrap: wrap;  /* 允许元素换行到新行 */
+      gap: 0.5vh;  /* 使用视口高度的0.5%作为行间距 */
+      margin: 0.5vh 0;  /* 使用视口高度的0.5%作为外边距 */
+      max-height: 15vh;  /* 限制按钮区域最大高度为屏幕高度的15% */
+    }
+    
+    /* 第一行：筛选区域 - 按比例铺满整行 */
+    .action-btn-group .filter-label {
+      order: 1;
+      font-size: 3.5vw;  /* 增大字体，提高可读性 */
+      flex: 0 0 15%;  /* 固定15%宽度 */
+      align-self: center;  /* 垂直居中对齐 */
+    }
+    
+    .action-btn-group .action-item.b3-select {
+      order: 1;
+      min-height: 4vh;  /* 增加高度 */
+      font-size: 3.2vw;  /* 增大字体 */
+      padding: 0.5vh 1vw;  /* 增加内边距 */
+      flex: 0 0 25%;  /* 固定25%宽度 */
+    }
+    
+    .action-btn-group .notebook-selector,
+    .action-btn-group .tag-selector {
+      order: 1;
+      flex: 0 0 50%;  /* 固定50%宽度 */
+    }
+    
+    /* 第二个筛选按钮：占满父容器 - 使用更高特异性覆盖fn__size150 */
+    .action-btn-group .notebook-selector button.fn__size150,
+    .action-btn-group .tag-selector button.fn__size150,
+    .action-btn-group .notebook-selector button,
+    .action-btn-group .tag-selector button {
+      width: 100% !important;  /* 占满父容器 */
+      min-width: 100% !important;  /* 最小宽度100% */
+      max-width: 100% !important;  /* 最大宽度100% */
+      flex: 1 1 100% !important;  /* 强制占满父容器 */
+      padding: 0.5vh 1vw !important;  /* 增加内边距 */
+      white-space: nowrap !important;  /* 不换行 */
+      overflow: hidden !important;  /* 超出部分隐藏 */
+      text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
+      box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
+    }
+    
+    /* 第二行：继续漫游按钮 - 独占一行 */
+    .action-btn-group .primary-btn {
+      order: 2;
+      width: 100%;  /* 占满整行 */
+      min-height: 4vh;  /* 使用视口高度的4%作为按钮高度 */
+      font-size: 3vw;  /* 增大字体 */
+      padding: 0.5vh 1.5vw;  /* 增加内边距 */
+      margin: 0;
+    }
+    
+    /* 第三行：4个操作按钮 - 水平排列 */
+    .action-btn-group .mobile-btn {
+      order: 3;
+      min-height: 3.5vh;  /* 增加高度 */
+      font-size: 2.5vw;  /* 增大字体 */
+      padding: 0.4vh 0.3vw;  /* 增加内边距 */
+      flex-shrink: 0;
+    }
+    
+    /* 前三个按钮：文本按钮，占用80%空间 */
+    .action-btn-group .mobile-btn:not(.help-icon) {
+      width: calc(26.67% - 0.2vw) !important;  /* 前三个按钮各占26.67%（80%/3） */
+    }
+    
+    /* 设置图标特殊样式 - 占用10%宽度，和筛选元素同行 */
+    .action-btn-group .help-icon {
+      order: 1 !important;  /* 和筛选元素在同一行 */
+      width: calc(10% - 0.2vw) !important;  /* 设置图标占10%宽度 */
+      min-height: 4vh !important;  /* 比普通按钮更高 */
+      padding: 0.5vh 0.2vw !important;  /* 减少内边距 */
+    }
+    
+    .action-btn-group .help-icon svg {
+      width: 24px !important;  /* 增大图标尺寸 */
+      height: 24px !important;
+    }
+    
+    /* 编辑区域锁定按钮移动端样式 - 和设置图标类似 */
+    .editable-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5vh 1vw;  /* 使用视口单位 */
+      background-color: var(--b3-theme-surface);
+      border-bottom: 1px solid var(--b3-border-color);
+    }
+    
+    .editable-title {
+      font-size: 3vw;  /* 使用视口宽度单位 */
+      font-weight: 500;
+      color: var(--b3-theme-on-surface);
+    }
+    
+    /* 移动端锁定按钮样式 - 恢复显示 */
+    .editable-header .lock-toggle-btn {
+      width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
+      min-height: 4vh !important;  /* 和设置图标相同的高度 */
+      padding: 0.5vh 0.2vw !important;  /* 和设置图标相同的内边距 */
+      font-size: 3vw !important;  /* 增大图标尺寸 */
+      border: 1px solid var(--b3-border-color) !important;
+      border-radius: 4px !important;
+      background-color: var(--b3-theme-surface) !important;
+      color: var(--b3-theme-on-surface) !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    
+    .lock-toggle-btn:hover {
+      background-color: var(--b3-theme-surface-hover);
+    }
+    
+    /* 内容区域移动端比例化优化 */
+    .protyle-wysiwyg {
+      padding: 0.5vh 4vw 25vh !important;  /* 使用视口单位，减少上边距，增加下边距 */
+      font-size: 4vw;  /* 使用视口宽度作为字体大小 */
+      line-height: 1.6;
+    }
+    
+    /* 文档标题移动端优化 - 更小更宽 */
+    .protyle-wysiwyg h1 {
+      font-size: 20px;
+      line-height: 1.3;
+      margin: 8px 0;
+      word-break: break-word;
+      white-space: normal;
+    }
+    
+    /* 整体上移，减少顶部间距 */
+    .protyle-wysiwyg {
+      margin-top: -8px;
+    }
+    
+    /* 移动端隐藏原始标题区域，让文档标题直接显示在顶部 */
+    .protyle .protyle-content .protyle-title.protyle-wysiwyg--attr {
+      display: none !important;
+    }
+    
+    /* 移动端让文档标题显示在顶部 */
+    .protyle-wysiwyg h1 {
+      margin-top: 0;
+      padding-top: 16px;
+    }
+    
+    /* 状态信息栏移动端优化 */
+    .status-info {
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    /* 编辑区域标题移动端优化 */
+    .editing-area-header {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+  }
+
+  /* 超小屏幕3行布局优化 */
+  @media (max-width: 480px) {
+    .action-btn-group {
+      gap: 0.3vh;  /* 更小的视口高度间距 */
+      margin: 0.3vh 0;  /* 更小的视口高度外边距 */
+      max-height: 12vh;  /* 限制按钮区域最大高度为屏幕高度的12% */
+    }
+    
+    /* 第一行：筛选区域 - 按比例铺满整行 */
+    .action-btn-group .filter-label {
+      order: 1;
+      font-size: 3vw;  /* 增大字体 */
+      flex: 0 0 15%;  /* 固定15%宽度 */
+    }
+    
+    .action-btn-group .action-item.b3-select {
+      order: 1;
+      min-height: 3.5vh;  /* 增加高度 */
+      font-size: 2.8vw;  /* 增大字体 */
+      padding: 0.4vh 0.8vw;  /* 增加内边距 */
+      flex: 0 0 25%;  /* 固定25%宽度 */
+    }
+    
+    .action-btn-group .notebook-selector,
+    .action-btn-group .tag-selector {
+      order: 1;
+      flex: 0 0 50%;  /* 固定50%宽度 */
+    }
+    
+    /* 第二个筛选按钮在超小屏幕：占满父容器 - 使用更高特异性覆盖fn__size150 */
+    .action-btn-group .notebook-selector button.fn__size150,
+    .action-btn-group .tag-selector button.fn__size150,
+    .action-btn-group .notebook-selector button,
+    .action-btn-group .tag-selector button {
+      width: 100% !important;  /* 占满父容器 */
+      min-width: 100% !important;  /* 最小宽度100% */
+      max-width: 100% !important;  /* 最大宽度100% */
+      flex: 1 1 100% !important;  /* 强制占满父容器 */
+      padding: 0.4vh 0.8vw !important;  /* 增加内边距 */
+      white-space: nowrap !important;  /* 不换行 */
+      overflow: hidden !important;  /* 超出部分隐藏 */
+      text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
+      box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
+    }
+    
+    /* 第二行：继续漫游按钮在超小屏幕 - 独占一行 */
+    .action-btn-group .primary-btn {
+      order: 2;
+      width: 100%;  /* 占满整行 */
+      min-height: 3.5vh;  /* 更小的视口高度 */
+      font-size: 2.8vw;  /* 增大字体 */
+      padding: 0.4vh 1.2vw;  /* 增加内边距 */
+    }
+    
+    /* 第三行：4个操作按钮在超小屏幕 - 水平排列 */
+    .action-btn-group .mobile-btn {
+      order: 3;
+      min-height: 3vh;  /* 增加高度 */
+      font-size: 2.2vw;  /* 增大字体 */
+      padding: 0.3vh 0.2vw;  /* 增加内边距 */
+      flex-shrink: 0;
+    }
+    
+    /* 前三个按钮在超小屏幕：文本按钮，占用80%空间 */
+    .action-btn-group .mobile-btn:not(.help-icon) {
+      width: calc(26.67% - 0.1vw) !important;  /* 前三个按钮各占26.67%（80%/3） */
+    }
+    
+    /* 设置图标在超小屏幕的特殊样式 - 占用10%宽度，和筛选元素同行 */
+    .action-btn-group .help-icon {
+      order: 1 !important;  /* 和筛选元素在同一行 */
+      width: calc(10% - 0.2vw) !important;  /* 设置图标占10%宽度 */
+      min-height: 4vh !important;  /* 比普通按钮更高 */
+      padding: 0.5vh 0.2vw !important;  /* 减少内边距 */
+    }
+    
+    .action-btn-group .help-icon svg {
+      width: 22px !important;  /* 增大图标尺寸 */
+      height: 22px !important;
+    }
+    
+    /* 编辑区域锁定按钮超小屏幕样式 - 和设置图标类似 */
+    .editable-header {
+      padding: 0.4vh 0.8vw;  /* 使用视口单位 */
+    }
+    
+    .editable-title {
+      font-size: 2.8vw;  /* 使用视口宽度单位 */
+    }
+    
+    /* 超小屏幕锁定按钮样式 - 恢复显示 */
+    .editable-header .lock-toggle-btn {
+      width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
+      min-height: 4vh !important;  /* 和设置图标相同的高度 */
+      padding: 0.5vh 0.2vw !important;  /* 和设置图标相同的内边距 */
+      font-size: 2.8vw !important;  /* 增大图标尺寸 */
+      border: 1px solid var(--b3-border-color) !important;
+      border-radius: 4px !important;
+      background-color: var(--b3-theme-surface) !important;
+      color: var(--b3-theme-on-surface) !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    
+    /* 文档标题在超小屏幕 */
+    .protyle-wysiwyg h1 {
+      font-size: 18px;
+      margin: 6px 0;
+    }
+    
+    .protyle-wysiwyg {
+      padding: 8px 12px 150px !important;
+      font-size: 15px;
+    }
+    
+    .protyle-wysiwyg h1 {
+      font-size: 22px;
+      margin: 12px 0;
+    }
+    
+    .status-info {
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    
+    .editing-area-header {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+  }
 
   .filter-label
     font-size 13px
@@ -2905,31 +3205,41 @@ const initEditableContent = async () => {
     border-radius: 6px
     overflow: hidden
 
-  .editable-header
-    display: flex
-    justify-content: space-between
-    align-items: center
-    padding: 8px 12px
-    background-color: var(--b3-theme-surface)
-    border-bottom: 1px solid var(--b3-border-color)
+  /* 桌面端编辑区域头部样式 */
+  @media (min-width: 769px) {
+    .editable-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background-color: var(--b3-theme-surface);
+      border-bottom: 1px solid var(--b3-border-color);
+    }
     
-  .editable-title
-    font-size: 14px
-    font-weight: 500
-    color: var(--b3-theme-on-background)
+    .editable-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--b3-theme-on-background);
+    }
+  }
 
-  .lock-toggle-btn
-    background: none
-    border: 1px solid var(--b3-border-color)
-    padding: 4px 8px
-    border-radius: 4px
-    cursor: pointer
-    font-size: 12px
-    transition: all 0.2s ease
+  /* 桌面端锁定按钮样式 */
+  @media (min-width: 769px) {
+    .lock-toggle-btn {
+      background: none;
+      border: 1px solid var(--b3-border-color);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
     
-    &:hover
-      background-color: var(--b3-theme-surface-light)
-      border-color: var(--b3-theme-primary)
+    .lock-toggle-btn:hover {
+      background-color: var(--b3-theme-surface-light);
+      border-color: var(--b3-theme-primary);
+    }
+  }
 
   .editable-content-area
     min-height: 200px

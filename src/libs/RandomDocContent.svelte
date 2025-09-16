@@ -2414,7 +2414,7 @@ const initEditableContent = async () => {
       max-height: 15vh;  /* 限制按钮区域最大高度为屏幕高度的15% */
     }
     
-    /* 第一行：筛选区域 - 按比例铺满整行 */
+    /* 第一行：筛选区域 - 铺满整行，按比例分配 */
     .action-btn-group .filter-label {
       order: 1;
       font-size: 3.5vw;  /* 增大字体，提高可读性 */
@@ -2433,22 +2433,24 @@ const initEditableContent = async () => {
     .action-btn-group .notebook-selector,
     .action-btn-group .tag-selector {
       order: 1;
-      flex: 0 0 50%;  /* 固定50%宽度 */
+      flex: 0 0 auto;  /* 宽度自适应内容，不固定 */
+      min-width: 0;  /* 允许收缩到0 */
+      max-width: none;  /* 不限制最大宽度 */
     }
     
-    /* 第二个筛选按钮：占满父容器 - 使用更高特异性覆盖fn__size150 */
+    /* 第二个筛选按钮：完全自适应内容宽度 - 使用更高特异性覆盖fn__size150 */
     .action-btn-group .notebook-selector button.fn__size150,
     .action-btn-group .tag-selector button.fn__size150,
     .action-btn-group .notebook-selector button,
     .action-btn-group .tag-selector button {
-      width: 100% !important;  /* 占满父容器 */
-      min-width: 100% !important;  /* 最小宽度100% */
-      max-width: 100% !important;  /* 最大宽度100% */
-      flex: 1 1 100% !important;  /* 强制占满父容器 */
+      width: auto !important;  /* 宽度完全自适应内容 */
+      min-width: auto !important;  /* 移除最小宽度限制 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      flex: 0 0 auto !important;  /* 不参与flex分配，完全自适应 */
       padding: 0.5vh 1vw !important;  /* 增加内边距 */
       white-space: nowrap !important;  /* 不换行 */
-      overflow: hidden !important;  /* 超出部分隐藏 */
-      text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
+      overflow: visible !important;  /* 允许内容完全显示 */
+      text-overflow: clip !important;  /* 不显示省略号 */
       box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
     }
     
@@ -2471,18 +2473,18 @@ const initEditableContent = async () => {
       flex-shrink: 0;
     }
     
-    /* 前三个按钮：文本按钮，占用80%空间 */
+    /* 第三行：四个操作按钮 - 铺满整行，按比例分配 */
     .action-btn-group .mobile-btn:not(.help-icon) {
-      width: calc(26.67% - 0.2vw) !important;  /* 前三个按钮各占26.67%（80%/3） */
+      order: 3;  /* 第三行 */
+      flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
+      min-height: 3.5vh;  /* 使用视口高度的3.5%作为按钮高度 */
+      font-size: 2.8vw;  /* 使用视口宽度的2.8%作为字体大小 */
+      padding: 0.4vh 0.8vw;  /* 使用视口单位作为内边距 */
+      margin: 0;
+      flex-shrink: 0;
     }
     
-    /* 设置图标特殊样式 - 占用10%宽度，和筛选元素同行 */
-    .action-btn-group .help-icon {
-      order: 1 !important;  /* 和筛选元素在同一行 */
-      width: calc(10% - 0.2vw) !important;  /* 设置图标占10%宽度 */
-      min-height: 4vh !important;  /* 比普通按钮更高 */
-      padding: 0.5vh 0.2vw !important;  /* 减少内边距 */
-    }
+    /* 设置图标已在第一行定义，这里不需要重复定义 */
     
     .action-btn-group .help-icon svg {
       width: 24px !important;  /* 增大图标尺寸 */
@@ -2644,18 +2646,18 @@ const initEditableContent = async () => {
       flex-shrink: 0;
     }
     
-    /* 前三个按钮在超小屏幕：文本按钮，占用80%空间 */
+    /* 第三行：四个操作按钮在超小屏幕 - 铺满整行，按比例分配 */
     .action-btn-group .mobile-btn:not(.help-icon) {
-      width: calc(26.67% - 0.1vw) !important;  /* 前三个按钮各占26.67%（80%/3） */
+      order: 3;  /* 第三行 */
+      flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
+      min-height: 3vh;  /* 使用视口高度的3%作为按钮高度 */
+      font-size: 2.5vw;  /* 使用视口宽度的2.5%作为字体大小 */
+      padding: 0.3vh 0.6vw;  /* 使用视口单位作为内边距 */
+      margin: 0;
+      flex-shrink: 0;
     }
     
-    /* 设置图标在超小屏幕的特殊样式 - 占用10%宽度，和筛选元素同行 */
-    .action-btn-group .help-icon {
-      order: 1 !important;  /* 和筛选元素在同一行 */
-      width: calc(10% - 0.2vw) !important;  /* 设置图标占10%宽度 */
-      min-height: 4vh !important;  /* 比普通按钮更高 */
-      padding: 0.5vh 0.2vw !important;  /* 减少内边距 */
-    }
+    /* 设置图标已在第一行定义，这里不需要重复定义 */
     
     .action-btn-group .help-icon svg {
       width: 22px !important;  /* 增大图标尺寸 */

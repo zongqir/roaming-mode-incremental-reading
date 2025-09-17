@@ -65,6 +65,10 @@ export default class RandomDocPlugin extends Plugin {
   public tabContentInstance
   /** 1.7 移动端对话框引用 */
   public mobileDialog
+  /** 1.8 全屏容器引用 */
+  public fullscreenContainer: HTMLElement | null = null
+  /** 1.9 全屏模式消息显示函数 */
+  public showFullscreenMessage: any = null
 
   /**
    * 1.7 插件构造函数

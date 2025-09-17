@@ -105,6 +105,265 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
 }
 
 /**
+ * 3.0 打开全屏模式
+ * 在移动端创建全屏漫游界面
+ *
+ * @param pluginInstance 插件实例
+ */
+const openFullscreenMode = async (pluginInstance: RandomDocPlugin) => {
+  try {
+    // 3.0.1 创建全屏容器
+    const fullscreenId = "fullscreen-random-doc"
+    const fullscreenContainer = document.createElement('div')
+    fullscreenContainer.id = fullscreenId
+    fullscreenContainer.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: var(--b3-theme-background);
+      z-index: 9998;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    `
+    
+    // 3.0.2 创建全屏头部
+    const header = document.createElement('div')
+    header.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--b3-theme-surface);
+      border-bottom: 1px solid var(--b3-theme-border);
+      flex-shrink: 0;
+    `
+    
+    // 3.0.3 创建标题
+    const title = document.createElement('h2')
+    title.textContent = pluginInstance.i18n.randomDoc
+    title.style.cssText = `
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--b3-theme-on-background);
+    `
+    
+    // 3.0.4 创建返回按钮
+    const backButton = document.createElement('button')
+    backButton.innerHTML = `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+    `
+    backButton.style.cssText = `
+      background: none;
+      border: none;
+      padding: 8px;
+      cursor: pointer;
+      border-radius: 6px;
+      color: var(--b3-theme-on-background);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+    `
+    
+    // 3.0.5 添加返回按钮事件
+    backButton.addEventListener('click', () => {
+      closeFullscreenMode(pluginInstance)
+    })
+    
+    // 3.0.6 添加悬停效果
+    backButton.addEventListener('mouseenter', () => {
+      backButton.style.backgroundColor = 'var(--b3-theme-hover)'
+    })
+    backButton.addEventListener('mouseleave', () => {
+      backButton.style.backgroundColor = 'transparent'
+    })
+    
+    // 3.0.7 组装头部
+    header.appendChild(backButton)
+    header.appendChild(title)
+    header.appendChild(document.createElement('div')) // 占位符，保持标题居中
+    
+    // 3.0.8 创建内容区域
+    const contentArea = document.createElement('div')
+    contentArea.id = "fullscreen-content"
+    contentArea.style.cssText = `
+      flex: 1;
+      overflow: auto;
+      padding: 0;
+    `
+    
+    // 3.0.9 创建消息提示容器
+    const messageContainer = document.createElement('div')
+    messageContainer.id = "fullscreen-message-container"
+    messageContainer.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10000;
+      pointer-events: none;
+    `
+    
+    // 3.0.10 组装全屏容器
+    fullscreenContainer.appendChild(header)
+    fullscreenContainer.appendChild(contentArea)
+    
+    // 3.0.11 添加到页面
+    document.body.appendChild(fullscreenContainer)
+    document.body.appendChild(messageContainer)
+    
+    // 3.0.12 创建自定义消息显示函数
+    const showFullscreenMessage = (message: string, duration: number = 3000, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+      // 创建消息元素
+      const messageElement = document.createElement('div')
+      messageElement.style.cssText = `
+        background: ${type === 'error' ? '#ff4757' : type === 'success' ? '#2ed573' : type === 'warning' ? '#ffa502' : '#3742fa'};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        opacity: 0;
+        transform: translateY(-20px);
+        transition: all 0.3s ease;
+        pointer-events: auto;
+        max-width: 80vw;
+        word-wrap: break-word;
+        text-align: center;
+      `
+      messageElement.textContent = message
+      
+      // 添加到消息容器
+      messageContainer.appendChild(messageElement)
+      
+      // 显示动画
+      setTimeout(() => {
+        messageElement.style.opacity = '1'
+        messageElement.style.transform = 'translateY(0)'
+      }, 10)
+      
+      // 自动移除
+      setTimeout(() => {
+        messageElement.style.opacity = '0'
+        messageElement.style.transform = 'translateY(-20px)'
+        setTimeout(() => {
+          if (messageElement.parentNode) {
+            messageElement.parentNode.removeChild(messageElement)
+          }
+        }, 300)
+      }, duration)
+    }
+    
+    // 3.0.13 保存自定义消息函数到插件实例
+    pluginInstance.showFullscreenMessage = showFullscreenMessage
+    
+    // 3.0.11 创建漫游内容组件
+    pluginInstance.tabContentInstance = new RandomDocContent({
+      target: contentArea,
+      props: {
+        pluginInstance: pluginInstance,
+      },
+    })
+    
+    // 3.0.12 保存全屏容器引用
+    pluginInstance.fullscreenContainer = fullscreenContainer
+    
+    // 3.0.13 请求全屏
+    if (fullscreenContainer.requestFullscreen) {
+      await fullscreenContainer.requestFullscreen()
+    } else if ((fullscreenContainer as any).webkitRequestFullscreen) {
+      await (fullscreenContainer as any).webkitRequestFullscreen()
+    } else if ((fullscreenContainer as any).mozRequestFullScreen) {
+      await (fullscreenContainer as any).mozRequestFullScreen()
+    } else if ((fullscreenContainer as any).msRequestFullscreen) {
+      await (fullscreenContainer as any).msRequestFullscreen()
+    }
+    
+    // 3.0.14 监听全屏退出事件
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && 
+          !(document as any).webkitFullscreenElement && 
+          !(document as any).mozFullScreenElement && 
+          !(document as any).msFullscreenElement) {
+        closeFullscreenMode(pluginInstance)
+      }
+    }
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange)
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange)
+    
+    pluginInstance.logger.info("Fullscreen roaming mode opened successfully")
+    
+    // 显示测试消息，确认全屏消息功能正常
+    setTimeout(() => {
+      showFullscreenMessage("全屏模式已启动，消息提示功能正常", 2000, "success")
+    }, 500)
+    
+  } catch (error) {
+    pluginInstance.logger.error("Failed to open fullscreen mode:", error)
+    showMessage("打开全屏模式失败: " + error.message, 3000, "error")
+  }
+}
+
+/**
+ * 3.0.1 关闭全屏模式
+ * 清理全屏界面和相关事件监听
+ *
+ * @param pluginInstance 插件实例
+ */
+const closeFullscreenMode = (pluginInstance: RandomDocPlugin) => {
+  try {
+    // 3.0.1.1 退出全屏
+    if (document.exitFullscreen) {
+      document.exitFullscreen()
+    } else if ((document as any).webkitExitFullscreen) {
+      (document as any).webkitExitFullscreen()
+    } else if ((document as any).mozCancelFullScreen) {
+      (document as any).mozCancelFullScreen()
+    } else if ((document as any).msExitFullscreen) {
+      (document as any).msExitFullscreen()
+    }
+    
+    // 3.0.1.2 清理消息容器
+    const messageContainer = document.getElementById("fullscreen-message-container")
+    if (messageContainer) {
+      messageContainer.remove()
+    }
+    
+    // 3.0.1.3 清理自定义消息函数
+    if (pluginInstance.showFullscreenMessage) {
+      delete pluginInstance.showFullscreenMessage
+    }
+    
+    // 3.0.1.4 清理全屏容器
+    if (pluginInstance.fullscreenContainer) {
+      pluginInstance.fullscreenContainer.remove()
+      pluginInstance.fullscreenContainer = null
+    }
+    
+    // 3.0.1.5 清理组件实例
+    if (pluginInstance.tabContentInstance) {
+      pluginInstance.tabContentInstance.$destroy()
+      pluginInstance.tabContentInstance = null
+    }
+    
+    pluginInstance.logger.info("Fullscreen mode closed successfully")
+    
+  } catch (error) {
+    pluginInstance.logger.error("Failed to close fullscreen mode:", error)
+  }
+}
+
+/**
  * 3. 触发文档漫游
  * 打开漫游标签页并启动漫游功能
  *
@@ -112,38 +371,10 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
  */
 const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
   try {
-    // 3.1 移动端使用对话框模式，桌面端使用标签页模式
+    // 3.1 移动端使用全屏模式，桌面端使用标签页模式
     if (pluginInstance.isMobile) {
-      // 移动端：使用对话框替代标签页
-      const dialogId = "mobile-random-doc-dialog"
-      const dialog = new Dialog({
-        title: pluginInstance.i18n.randomDoc,
-        content: `<div id="${dialogId}" style="height: 70vh; overflow: auto;"></div>`,
-        width: "92vw",
-        height: "80vh"
-      })
-      
-      // 等待对话框DOM渲染
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      const dialogElement = document.getElementById(dialogId)
-      if (!dialogElement) {
-        pluginInstance.logger.error("Mobile dialog element not found")
-        showMessage("移动端界面初始化失败", 3000, "error")
-        return
-      }
-      
-      // 创建漫游内容组件
-      pluginInstance.tabContentInstance = new RandomDocContent({
-        target: dialogElement,
-        props: {
-          pluginInstance: pluginInstance,
-        },
-      })
-      
-      // 保存对话框引用以便后续操作
-      pluginInstance.mobileDialog = dialog
-      pluginInstance.logger.info("Mobile roaming dialog created successfully")
+      // 移动端：使用全屏模式替代对话框
+      await openFullscreenMode(pluginInstance)
       
     } else {
       // 桌面端：使用标签页模式
@@ -211,18 +442,18 @@ const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
     }
     
     if (pluginInstance.isMobile) {
-      // 移动端：检查对话框是否存在
-      if (!pluginInstance.mobileDialog) {
+      // 移动端：检查全屏容器是否存在
+      if (!pluginInstance.fullscreenContainer) {
         await triggerRandomDoc(pluginInstance)
         return
       }
       
       // 移动端直接调用漫游实例的方法，无需激活标签页
       try {
-        // 模拟点击"继续漫游"按钮 - 在对话框内查找
-        const dialogElement = document.getElementById("mobile-random-doc-dialog")
-        if (dialogElement) {
-          const buttons = dialogElement.querySelectorAll('button.primary-btn');
+        // 模拟点击"继续漫游"按钮 - 在全屏容器内查找
+        const fullscreenContent = document.getElementById("fullscreen-content")
+        if (fullscreenContent) {
+          const buttons = fullscreenContent.querySelectorAll('button.primary-btn');
           let continueButtonFound = false;
           
           for (let i = 0; i < buttons.length; i++) {
@@ -236,14 +467,14 @@ const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
           }
           
           if (!continueButtonFound) {
-            showMessage("未找到继续漫游按钮，请手动点击对话框中的继续漫游按钮", 3000, "info");
+            showMessage("未找到继续漫游按钮，请手动点击全屏界面中的继续漫游按钮", 3000, "info");
           }
         } else {
-          showMessage("移动端对话框未找到，请重新打开漫游功能", 3000, "error");
+          showMessage("移动端全屏界面未找到，请重新打开漫游功能", 3000, "error");
         }
       } catch (error) {
         pluginInstance.logger.error("移动端模拟点击继续漫游按钮失败:", error);
-        showMessage("无法执行继续漫游，请手动点击对话框中的继续漫游按钮", 3000, "info");
+        showMessage("无法执行继续漫游，请手动点击全屏界面中的继续漫游按钮", 3000, "info");
       }
       
     } else {

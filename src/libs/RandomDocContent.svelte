@@ -28,6 +28,17 @@
   import { storeName } from "../Constants"
   import RandomDocConfig, { FilterMode } from "../models/RandomDocConfig"
   import { Dialog, openTab, showMessage } from "siyuan"
+  
+  // 智能消息显示函数：在全屏模式下使用自定义消息，否则使用SiYuan原生消息
+  const smartShowMessage = (message: string, duration: number = 3000, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    if (pluginInstance.isMobile && pluginInstance.showFullscreenMessage) {
+      // 全屏模式下使用自定义消息显示
+      pluginInstance.showFullscreenMessage(message, duration, type)
+    } else {
+      // 普通模式下使用SiYuan原生消息显示
+      showMessage(message, duration, type)
+    }
+  }
   import RandomDocPlugin from "../index"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import MetricsPanel from "./MetricsPanel.svelte"
@@ -233,7 +244,7 @@
       }
     } catch (err) {
       pluginInstance.logger.error("拖动排序失败", err)
-      showMessage("拖动排序失败: " + err.message, 3000, "error")
+      smartShowMessage("拖动排序失败: " + err.message, 3000, "error")
       
       // 重新启用所有输入
       document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
@@ -336,7 +347,7 @@
       }
     } catch (err) {
       pluginInstance.logger.error("设置优先级失败", err)
-      showMessage("设置优先级失败: " + err.message, 3000, "error")
+      smartShowMessage("设置优先级失败: " + err.message, 3000, "error")
       
       // 重新启用所有输入
       document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
@@ -546,7 +557,7 @@
         pluginInstance.logger.info(`显示的概率值: ${selectionProbabilityText}, 原始概率值: ${selectionProbability}`)
       } catch (error) {
         pluginInstance.logger.error("获取概率值失败:", error)
-        showMessage("获取概率值失败: " + error.message, 3000, "error")
+        smartShowMessage("获取概率值失败: " + error.message, 3000, "error")
         selectionProbabilityText = "计算出错"
       }
       
@@ -733,7 +744,7 @@
       await pr.resetVisited()
     } catch (error) {
       pluginInstance.logger.error("重置访问记录失败", error)
-      showMessage(`重置失败: ${error.message}`, 5000, "error")
+      smartShowMessage(`重置失败: ${error.message}`, 5000, "error")
       throw error
     }
   }
@@ -801,7 +812,7 @@
     const currentSql = storeConfig.currentSql
     const result = await pluginInstance.kernelApi.sql(currentSql)
     if (result.code !== 0) {
-      showMessage(pluginInstance.i18n.docFetchError, 7000, "error")
+      smartShowMessage(pluginInstance.i18n.docFetchError, 7000, "error")
       throw new Error(result.msg)
     }
 
@@ -1114,7 +1125,7 @@
       }, 500);
     } catch (err) {
       pluginInstance.logger.error("设置优先级失败", err);
-      showMessage("设置优先级失败: " + err.message, 3000, "error");
+      smartShowMessage("设置优先级失败: " + err.message, 3000, "error");
       
       // 恢复UI到拖动前的状态（如果保存了原始状态）
       const pointIndex = priorityBarPoints.findIndex(p => p.id === docId);
@@ -1143,7 +1154,7 @@
       });
     } catch (err) {
       pluginInstance.logger.error("打开文档失败", err);
-      showMessage("打开文档失败: " + err.message, 3000, "error");
+      smartShowMessage("打开文档失败: " + err.message, 3000, "error");
     }
   }
 
@@ -1442,7 +1453,7 @@
   // 处理手动输入ID的确认
   const confirmManualInput = async function () {
     if (!manualInputId || manualInputId.trim() === "") {
-      showMessage("请输入有效的文档ID", 3000, "error")
+      smartShowMessage("请输入有效的文档ID", 3000, "error")
       return
     }
     
@@ -1456,14 +1467,14 @@
         // 文档存在，设置为根文档
         await selectDocument(trimmedId, title)
         showManualInput = false
-        showMessage(`已设置根文档: ${title}`, 2000, "info")
+        smartShowMessage(`已设置根文档: ${title}`, 2000, "info")
       } else {
         // 文档不存在或无标题，询问用户是否仍要使用
         const confirmed = confirm(`无法找到文档标题，文档ID可能无效。是否仍要使用 "${trimmedId}" 作为根文档？`)
         if (confirmed) {
           await selectDocument(trimmedId, "")
           showManualInput = false
-          showMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
+          smartShowMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
         }
       }
     } catch (error) {
@@ -1472,7 +1483,7 @@
       if (confirmed) {
         await selectDocument(trimmedId, "")
         showManualInput = false
-        showMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
+        smartShowMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
       }
     }
   }
@@ -1802,7 +1813,7 @@ const initEditableContent = async () => {
     if (storeConfig?.customSqlEnabled) {
       sqlList = JSON.parse(storeConfig?.sql ?? "[]")
       if (sqlList.length == 0) {
-        showMessage(pluginInstance.i18n.customSqlEmpty, 7000, "error")
+        smartShowMessage(pluginInstance.i18n.customSqlEmpty, 7000, "error")
         return
       }
       currentSql = storeConfig?.currentSql ?? sqlList[0].sql
@@ -1819,10 +1830,10 @@ const initEditableContent = async () => {
           pluginInstance.logger.info("检测到启动时自动重置设置，开始重置已访问文档记录...")
           const filterCondition = pr.buildFilterCondition(storeConfig)
           await pr.resetVisited(filterCondition)
-          showMessage("启动时自动重置已访问文档记录完成", 3000)
+          smartShowMessage("启动时自动重置已访问文档记录完成", 3000)
         } catch (error) {
           pluginInstance.logger.error("启动时自动重置失败:", error)
-          showMessage("启动时自动重置失败: " + error.message, 5000, "error")
+          smartShowMessage("启动时自动重置失败: " + error.message, 5000, "error")
         }
       }
     }

@@ -104,6 +104,33 @@ class KernelApi extends BaseApi {
   }
 
   /**
+   * 批量获取块属性
+   * 
+   * @param blockIds 块ID列表
+   * @returns 批量属性结果，结果顺序与输入顺序一致
+   */
+  public async batchGetBlockAttrs(blockIds: string[]): Promise<SiyuanData[]> {
+    if (!blockIds || blockIds.length === 0) {
+      return []
+    }
+
+    // 构建批量请求列表
+    const requests = blockIds.map(blockId => ({
+      url: "/api/attr/getBlockAttrs",
+      data: { id: blockId }
+    }))
+
+    if (blockIds.length <= 5) {
+      this.logger.info(`批量获取 ${blockIds.length} 个块的属性: ${blockIds.slice(0, 3).join(', ')}${blockIds.length > 3 ? '...' : ''}`)
+    } else {
+      this.logger.info(`批量获取 ${blockIds.length} 个块的属性`)
+    }
+
+    // 执行批量请求
+    return await this.batchSiyuanRequest(requests)
+  }
+
+  /**
    * 设置块属性
    */
   public async setBlockAttrs(blockId: string, attrs: any): Promise<SiyuanData> {
@@ -111,6 +138,36 @@ class KernelApi extends BaseApi {
       id: blockId,
       attrs: attrs,
     })
+  }
+
+  /**
+   * 批量设置块属性
+   * 
+   * @param blockAttrs 块属性列表，每个元素包含blockId和attrs
+   * @returns 批量设置结果，结果顺序与输入顺序一致
+   */
+  public async batchSetBlockAttrs(blockAttrs: Array<{blockId: string, attrs: any}>): Promise<SiyuanData[]> {
+    if (!blockAttrs || blockAttrs.length === 0) {
+      return []
+    }
+
+    // 构建批量请求列表
+    const requests = blockAttrs.map(item => ({
+      url: "/api/attr/setBlockAttrs",
+      data: { 
+        id: item.blockId,
+        attrs: item.attrs
+      }
+    }))
+
+    if (blockAttrs.length <= 5) {
+      this.logger.info(`批量设置 ${blockAttrs.length} 个块的属性: ${blockAttrs.slice(0, 3).map(item => item.blockId).join(', ')}${blockAttrs.length > 3 ? '...' : ''}`)
+    } else {
+      this.logger.info(`批量设置 ${blockAttrs.length} 个块的属性`)
+    }
+
+    // 执行批量请求
+    return await this.batchSiyuanRequest(requests)
   }
 
   public async getDoc(docId: string): Promise<SiyuanData> {

@@ -452,18 +452,72 @@
           newDocId = result
         }
         if (!newDocId) {
-          content = "没有找到符合条件的文档，这可能是因为随机算法的误差或优先级配置问题。"
-          tips = "调整过滤条件或优先级配置，然后再次尝试。"
-          isLoading = false
-          return
+          pluginInstance.logger.info("没有找到符合条件的文档，可能一轮漫游已完成，自动开始新一轮...")
+          try {
+            // 重置访问记录
+            await resetAllVisitCounts()
+            content = "已完成一轮漫游！"
+            tips = "没有找到符合条件的文档，已自动重置访问记录，开始新一轮漫游..."
+            
+            // 短暂延迟后重新开始漫游
+            setTimeout(async () => {
+              try {
+                await doIncrementalRandomDoc()
+              } catch (retryError) {
+                pluginInstance.logger.error("重新开始漫游失败:", retryError)
+                content = `重新开始漫游失败: ${retryError.message}`
+                tips = "自动重新开始失败，请手动点击继续漫游。"
+                isLoading = false
+              }
+            }, 1000)
+            return
+          } catch (resetError) {
+            pluginInstance.logger.error("自动重置访问记录失败:", resetError)
+            content = "自动重置失败，请手动重置访问记录"
+            tips = "检测到一轮漫游完成，但自动重置失败，请手动重置访问记录后继续。"
+            isLoading = false
+            return
+          }
         }
         
         // 设置当前文档ID
         currentRndId = newDocId
       } catch (error) {
         pluginInstance.logger.error("获取随机文档失败:", error)
+        
+        // 检查是否是因为所有文档都已访问过而导致的错误
+        if (error.message.includes("所有文档都已访问过") || error.message.includes("没有找到符合条件的文档")) {
+          pluginInstance.logger.info("检测到所有文档都已访问，自动开始新一轮...")
+          try {
+            // 重置访问记录
+            await resetAllVisitCounts()
+            content = "已完成一轮漫游！"
+            tips = "所有文档都已访问过，已自动重置访问记录，开始新一轮漫游..."
+            
+            // 短暂延迟后重新开始漫游
+            setTimeout(async () => {
+              try {
+                await doIncrementalRandomDoc()
+              } catch (retryError) {
+                pluginInstance.logger.error("重新开始漫游失败:", retryError)
+                content = `重新开始漫游失败: ${retryError.message}`
+                tips = "自动重新开始失败，请手动点击继续漫游。"
+                isLoading = false
+              }
+            }, 1000)
+            return
+          } catch (resetError) {
+            pluginInstance.logger.error("自动重置访问记录失败:", resetError)
+            content = "自动重置失败，请手动重置访问记录"
+            tips = "检测到一轮漫游完成，但自动重置失败，请手动重置访问记录后继续。"
+            isLoading = false
+            return
+          }
+        }
+        
+        // 其他类型的错误，直接显示错误信息
         content = `获取随机文档失败: ${error.message}`
-        tips = "发生错误，请检查过滤条件和优先级配置。"
+        tips = "发生未知错误，请检查日志获取详细信息。"
         isLoading = false
         return
       }

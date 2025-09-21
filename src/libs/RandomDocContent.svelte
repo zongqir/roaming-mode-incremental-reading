@@ -35,8 +35,9 @@
       // 全屏模式下使用自定义消息显示
       pluginInstance.showFullscreenMessage(message, duration, type)
     } else {
-      // 普通模式下使用SiYuan原生消息显示
-      showMessage(message, duration, type)
+      // 普通模式下使用SiYuan原生消息显示，只支持info和error类型
+      const siyuanType: 'info' | 'error' = (type === 'error') ? 'error' : 'info'
+      showMessage(message, duration, siyuanType)
     }
   }
   import RandomDocPlugin from "../index"
@@ -1521,6 +1522,7 @@
     window.open("https://github.com/ebAobS/roaming-mode-incremental-reading/blob/main/README_zh_CN.md")
   }
 
+
   // 切换笔记本选择
   function toggleNotebook(notebookId) {
     if (selectedNotebooks.includes(notebookId)) {
@@ -2425,54 +2427,83 @@ const initEditableContent = async () => {
       max-height: 15vh;  /* 限制按钮区域最大高度为屏幕高度的15% */
     }
     
-    /* 第一行：筛选区域 - 铺满整行，按比例分配 */
+    /* 第一行：筛选区域 - 三元素平铺整行，合理分配宽度 */
     .action-btn-group .filter-label {
       order: 1;
-      font-size: 3.5vw;  /* 增大字体，提高可读性 */
-      flex: 0 0 15%;  /* 固定15%宽度 */
+      font-size: 3.8vw;  /* 增大字体，提高可读性 */
+      flex: 0 0 18%;  /* 固定18%宽度，给筛选文字更多空间 */
       align-self: center;  /* 垂直居中对齐 */
+      text-align: left;  /* 左对齐 */
+      font-weight: 500;  /* 增加字体粗细 */
     }
     
     .action-btn-group .action-item.b3-select {
       order: 1;
-      min-height: 4vh;  /* 增加高度 */
-      font-size: 3.2vw;  /* 增大字体 */
-      padding: 0.5vh 1vw;  /* 增加内边距 */
-      flex: 0 0 25%;  /* 固定25%宽度 */
+      min-height: 4.5vh;  /* 增加高度 */
+      font-size: 3.4vw;  /* 增大字体 */
+      padding: 0.6vh 1vw;  /* 增加内边距 */
+      flex: 0 0 28%;  /* 固定28%宽度，给筛选类型选择框更多空间 */
+      box-sizing: border-box;
     }
     
     .action-btn-group .notebook-selector,
     .action-btn-group .tag-selector {
       order: 1;
-      flex: 0 0 auto;  /* 宽度自适应内容，不固定 */
-      min-width: 0;  /* 允许收缩到0 */
-      max-width: none;  /* 不限制最大宽度 */
+      flex: 1 1 0;  /* 占用剩余空间（约54%），自适应 */
+      min-width: 0;  /* 允许收缩 */
+      max-width: 54%;  /* 限制最大宽度，避免过度扩展 */
+      position: relative;  /* 为下拉菜单定位做准备 */
     }
     
-    /* 第二个筛选按钮：完全自适应内容宽度 - 使用更高特异性覆盖fn__size150 */
+    /* 第三个筛选按钮：占用剩余空间但有最大宽度限制 */
     .action-btn-group .notebook-selector button.fn__size150,
     .action-btn-group .tag-selector button.fn__size150,
     .action-btn-group .notebook-selector button,
     .action-btn-group .tag-selector button {
-      width: auto !important;  /* 宽度完全自适应内容 */
-      min-width: auto !important;  /* 移除最小宽度限制 */
-      max-width: none !important;  /* 移除最大宽度限制 */
-      flex: 0 0 auto !important;  /* 不参与flex分配，完全自适应 */
-      padding: 0.5vh 1vw !important;  /* 增加内边距 */
+      width: 100% !important;  /* 占满父容器宽度 */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: 100% !important;  /* 不超过父容器 */
+      flex: none !important;  /* 不参与flex计算 */
+      padding: 0.6vh 1vw !important;  /* 增加内边距 */
+      min-height: 4.5vh !important;  /* 与其他元素保持一致的高度 */
+      font-size: 3.4vw !important;  /* 与筛选类型选择框一致的字体大小 */
       white-space: nowrap !important;  /* 不换行 */
-      overflow: visible !important;  /* 允许内容完全显示 */
-      text-overflow: clip !important;  /* 不显示省略号 */
+      overflow: hidden !important;  /* 超出部分隐藏 */
+      text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
       box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
     }
+    
+    /* 确保下拉菜单不影响布局 */
+    .action-btn-group .notebook-list,
+    .action-btn-group .tag-list {
+      position: absolute !important;
+      top: 100% !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 1000 !important;
+      width: 100% !important;  /* 相对于父容器宽度 */
+      min-width: 0 !important;  /* 移除最小宽度限制，让它完全跟随父容器 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      box-sizing: border-box !important;
+    }
+    
+    /* 移动端下拉菜单按钮优化 */
+    .notebook-list .confirm-button-container,
+    .tag-list .confirm-button-container {
+      gap: 6px !important;
+      margin-top: 6px !important;
+    }
+    
     
     /* 第二行：继续漫游按钮 - 独占一行 */
     .action-btn-group .primary-btn {
       order: 2;
       width: 100%;  /* 占满整行 */
-      min-height: 4vh;  /* 使用视口高度的4%作为按钮高度 */
-      font-size: 3vw;  /* 增大字体 */
-      padding: 0.5vh 1.5vw;  /* 增加内边距 */
+      min-height: 5.5vh;  /* 增加按钮高度到5.5vh */
+      font-size: 4.2vw;  /* 增大字体到4.2vw */
+      padding: 1vh 1.5vw;  /* 增加内边距 */
       margin: 0;
+      font-weight: 600;  /* 增加字体粗细 */
     }
     
     /* 第三行：4个操作按钮 - 水平排列 */
@@ -2488,9 +2519,9 @@ const initEditableContent = async () => {
     .action-btn-group .mobile-btn:not(.help-icon) {
       order: 3;  /* 第三行 */
       flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
-      min-height: 3.5vh;  /* 使用视口高度的3.5%作为按钮高度 */
-      font-size: 2.8vw;  /* 使用视口宽度的2.8%作为字体大小 */
-      padding: 0.4vh 0.8vw;  /* 使用视口单位作为内边距 */
+      min-height: 4vh;  /* 增加按钮高度 */
+      font-size: 3.5vw;  /* 增大字体到3.5vw */
+      padding: 0.6vh 0.8vw;  /* 增加内边距 */
       margin: 0;
       flex-shrink: 0;
     }
@@ -2513,8 +2544,8 @@ const initEditableContent = async () => {
     }
     
     .editable-title {
-      font-size: 3vw;  /* 使用视口宽度单位 */
-      font-weight: 500;
+      font-size: 4.5vw;  /* 增大字体到4.5vw，更易阅读 */
+      font-weight: 600;  /* 增加字体粗细 */
       color: var(--b3-theme-on-surface);
     }
     
@@ -2545,13 +2576,14 @@ const initEditableContent = async () => {
       line-height: 1.6;
     }
     
-    /* 文档标题移动端优化 - 更小更宽 */
+    /* 文档标题移动端优化 - 更大更易读 */
     .protyle-wysiwyg h1 {
-      font-size: 20px;
+      font-size: 28px;
       line-height: 1.3;
-      margin: 8px 0;
+      margin: 12px 0;
       word-break: break-word;
       white-space: normal;
+      font-weight: 600;
     }
     
     /* 整体上移，减少顶部间距 */
@@ -2592,28 +2624,32 @@ const initEditableContent = async () => {
       max-height: 12vh;  /* 限制按钮区域最大高度为屏幕高度的12% */
     }
     
-    /* 第一行：筛选区域 - 按比例铺满整行 */
+    /* 第一行：筛选区域 - 三元素平铺整行（超小屏幕优化） */
     .action-btn-group .filter-label {
       order: 1;
-      font-size: 3vw;  /* 增大字体 */
-      flex: 0 0 15%;  /* 固定15%宽度 */
+      font-size: 3.2vw;  /* 增大字体 */
+      flex: 0 0 16%;  /* 固定16%宽度 */
+      align-self: center;
+      text-align: left;
+      font-weight: 500;
     }
     
     .action-btn-group .action-item.b3-select {
       order: 1;
-      min-height: 3.5vh;  /* 增加高度 */
-      font-size: 2.8vw;  /* 增大字体 */
-      padding: 0.4vh 0.8vw;  /* 增加内边距 */
-      flex: 0 0 25%;  /* 固定25%宽度 */
+      min-height: 4vh;  /* 增加高度 */
+      font-size: 3vw;  /* 增大字体 */
+      padding: 0.5vh 0.8vw;  /* 增加内边距 */
+      flex: 0 0 26%;  /* 固定26%宽度 */
+      box-sizing: border-box;
     }
     
     .action-btn-group .notebook-selector,
     .action-btn-group .tag-selector {
       order: 1;
-      width: auto !important;  /* 宽度自适应内容 */
-      flex: 0 0 auto !important;  /* 不参与flex分配，完全自适应 */
-      min-width: auto !important;  /* 移除最小宽度限制 */
-      max-width: none !important;  /* 移除最大宽度限制 */
+      flex: 1 1 0;  /* 占用剩余空间（约58%） */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: 58% !important;  /* 限制最大宽度 */
+      position: relative;
     }
     
     .action-btn-group .help-icon {
@@ -2623,29 +2659,69 @@ const initEditableContent = async () => {
       padding: 0.3vh 0.2vw !important;  /* 减少内边距 */
     }
     
-    /* 第二个筛选按钮在超小屏幕：占满父容器 - 使用更高特异性覆盖fn__size150 */
+    /* 第三个筛选按钮在超小屏幕：占满父容器 - 使用更高特异性覆盖fn__size150 */
     .action-btn-group .notebook-selector button.fn__size150,
     .action-btn-group .tag-selector button.fn__size150,
     .action-btn-group .notebook-selector button,
     .action-btn-group .tag-selector button {
-      width: 100% !important;  /* 占满父容器 */
-      min-width: 100% !important;  /* 最小宽度100% */
-      max-width: 100% !important;  /* 最大宽度100% */
-      flex: 1 1 100% !important;  /* 强制占满父容器 */
-      padding: 0.4vh 0.8vw !important;  /* 增加内边距 */
+      width: 100% !important;  /* 占满父容器宽度 */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: 100% !important;  /* 不超过父容器 */
+      flex: none !important;  /* 不参与flex计算 */
+      padding: 0.5vh 0.8vw !important;  /* 增加内边距 */
+      min-height: 4vh !important;  /* 与其他元素保持一致的高度 */
+      font-size: 3vw !important;  /* 与筛选类型选择框一致的字体大小 */
       white-space: nowrap !important;  /* 不换行 */
       overflow: hidden !important;  /* 超出部分隐藏 */
       text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
       box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
     }
     
+    /* 确保超小屏幕下拉菜单不影响布局 */
+    .action-btn-group .notebook-list,
+    .action-btn-group .tag-list {
+      position: absolute !important;
+      top: 100% !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 1000 !important;
+      width: 100% !important;  /* 相对于父容器宽度 */
+      min-width: 0 !important;  /* 移除最小宽度限制，让它完全跟随父容器 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      box-sizing: border-box !important;
+    }
+    
+    /* 超小屏幕下拉菜单按钮优化 */
+    .notebook-list .confirm-button-container,
+    .tag-list .confirm-button-container {
+      gap: 4px !important;
+      margin-top: 4px !important;
+    }
+    
+    /* 使用更高优先级的选择器覆盖fn__size150类 */
+    .notebook-list .confirm-button-container button.fn__size150,
+    .tag-list .confirm-button-container button.fn__size150,
+    .notebook-list .confirm-button-container button,
+    .tag-list .confirm-button-container button {
+      flex: 1 1 0 !important;  /* 按钮平分宽度 */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      width: auto !important;  /* 覆盖fn__size150的固定宽度 */
+      padding: 0.5vh 0.6vw !important;  /* 使用视口单位，稍小一些 */
+      font-size: 2.8vw !important;  /* 使用视口宽度单位，稍小一些 */
+      min-height: 3.2vh !important;  /* 设置最小高度，稍小一些 */
+      white-space: nowrap !important;  /* 防止换行 */
+      box-sizing: border-box !important;  /* 确保正确的盒模型 */
+    }
+    
     /* 第二行：继续漫游按钮在超小屏幕 - 独占一行 */
     .action-btn-group .primary-btn {
       order: 2;
       width: 100%;  /* 占满整行 */
-      min-height: 3.5vh;  /* 更小的视口高度 */
-      font-size: 2.8vw;  /* 增大字体 */
-      padding: 0.4vh 1.2vw;  /* 增加内边距 */
+      min-height: 5vh;  /* 增加按钮高度到5vh */
+      font-size: 4vw;  /* 增大字体到4vw */
+      padding: 0.8vh 1.2vw;  /* 增加内边距 */
+      font-weight: 600;  /* 增加字体粗细 */
     }
     
     /* 第三行：4个操作按钮在超小屏幕 - 水平排列 */
@@ -2661,9 +2737,9 @@ const initEditableContent = async () => {
     .action-btn-group .mobile-btn:not(.help-icon) {
       order: 3;  /* 第三行 */
       flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
-      min-height: 3vh;  /* 使用视口高度的3%作为按钮高度 */
-      font-size: 2.5vw;  /* 使用视口宽度的2.5%作为字体大小 */
-      padding: 0.3vh 0.6vw;  /* 使用视口单位作为内边距 */
+      min-height: 3.5vh;  /* 增加按钮高度 */
+      font-size: 3.2vw;  /* 增大字体到3.2vw */
+      padding: 0.4vh 0.6vw;  /* 增加内边距 */
       margin: 0;
       flex-shrink: 0;
     }
@@ -2675,13 +2751,15 @@ const initEditableContent = async () => {
       height: 22px !important;
     }
     
+    
     /* 编辑区域锁定按钮超小屏幕样式 - 和设置图标类似 */
     .editable-header {
       padding: 0.4vh 0.8vw;  /* 使用视口单位 */
     }
     
     .editable-title {
-      font-size: 2.8vw;  /* 使用视口宽度单位 */
+      font-size: 4.2vw;  /* 增大字体到4.2vw，更易阅读 */
+      font-weight: 600;  /* 增加字体粗细 */
     }
     
     /* 超小屏幕锁定按钮样式 - 恢复显示 */
@@ -2700,20 +2778,17 @@ const initEditableContent = async () => {
       justify-content: center !important;
     }
     
-    /* 文档标题在超小屏幕 */
+    /* 文档标题在超小屏幕 - 更大更易读 */
     .protyle-wysiwyg h1 {
-      font-size: 18px;
-      margin: 6px 0;
+      font-size: 26px;
+      margin: 10px 0;
+      font-weight: 600;
+      line-height: 1.2;
     }
     
     .protyle-wysiwyg {
       padding: 8px 12px 150px !important;
       font-size: 15px;
-    }
-    
-    .protyle-wysiwyg h1 {
-      font-size: 22px;
-      margin: 12px 0;
     }
     
     .status-info {
@@ -2792,7 +2867,9 @@ const initEditableContent = async () => {
     padding: 8px
     max-height: 300px
     overflow-y: auto
-    width: 200px
+    width: 100%  /* 改为100%，相对于父容器宽度 */
+    min-width: 200px  /* 设置最小宽度，保证内容不会太挤 */
+    box-sizing: border-box
     
   .notebook-item
     display: block
@@ -2811,7 +2888,21 @@ const initEditableContent = async () => {
     display: flex
     justify-content: center
     margin-top: 8px
+    gap: 8px
+    
+    button
+      flex: 0 0 auto  /* 按钮宽度自适应内容 */
+      min-width: 60px  /* 设置最小宽度 */
+      max-width: none  /* 桌面端不限制最大宽度，让按钮自适应内容 */
+      padding: 6px 12px  /* 调整内边距 */
+      font-size: 13px  /* 设置合适的字体大小 */
 
+  /* 桌面端下拉菜单按钮覆盖fn__size150的固定宽度 */
+  .notebook-list .confirm-button-container button.fn__size150,
+  .tag-list .confirm-button-container button.fn__size150
+    width: auto !important  /* 覆盖fn__size150的固定宽度 */
+    max-width: none !important  /* 不限制最大宽度 */
+    min-width: 60px !important  /* 保持最小宽度 */
 
   .editable-content-area
     min-height: 400px
@@ -3194,7 +3285,9 @@ const initEditableContent = async () => {
     padding: 8px
     max-height: 300px
     overflow-y: auto
-    width: 200px
+    width: 100%  /* 改为100%，相对于父容器宽度 */
+    min-width: 200px  /* 设置最小宽度，保证内容不会太挤 */
+    box-sizing: border-box
   
   .tag-item
     display: block

@@ -94,7 +94,25 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
     width: pluginInstance.isMobile ? "92vw" : "720px",
   })
   
-  // 2.2.3 实例化设置组件
+  // 2.2.3 确保设置对话框在最大化窗口之上显示
+  // 获取对话框元素并设置更高的z-index
+  setTimeout(() => {
+    const dialogElement = d.element
+    if (dialogElement) {
+      // 设置比最大化窗口容器更高的z-index（最大化窗口是9998）
+      dialogElement.style.zIndex = '10000'
+      
+      // 同时设置dialog的backdrop（如果存在）
+      const backdrop = dialogElement.previousElementSibling
+      if (backdrop && backdrop.classList.contains('b3-dialog__backdrop')) {
+        (backdrop as HTMLElement).style.zIndex = '9999'
+      }
+      
+      pluginInstance.logger.info("设置对话框z-index已调整为最高层级")
+    }
+  }, 50)
+  
+  // 2.2.4 实例化设置组件
   new RandomDocSetting({
     target: document.getElementById(settingId) as HTMLElement,
     props: {
@@ -105,14 +123,14 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
 }
 
 /**
- * 3.0 打开全屏模式
- * 在移动端创建全屏漫游界面
+ * 3.0 打开最大化窗口模式
+ * 在移动端创建最大化漫游界面（非全屏）
  *
  * @param pluginInstance 插件实例
  */
 const openFullscreenMode = async (pluginInstance: RandomDocPlugin) => {
   try {
-    // 3.0.1 创建全屏容器
+    // 3.0.1 创建最大化容器
     const fullscreenId = "fullscreen-random-doc"
     const fullscreenContainer = document.createElement('div')
     fullscreenContainer.id = fullscreenId
@@ -272,66 +290,29 @@ const openFullscreenMode = async (pluginInstance: RandomDocPlugin) => {
       },
     })
     
-    // 3.0.12 保存全屏容器引用
+    // 3.0.12 保存最大化容器引用
     pluginInstance.fullscreenContainer = fullscreenContainer
     
-    // 3.0.13 请求全屏
-    if (fullscreenContainer.requestFullscreen) {
-      await fullscreenContainer.requestFullscreen()
-    } else if ((fullscreenContainer as any).webkitRequestFullscreen) {
-      await (fullscreenContainer as any).webkitRequestFullscreen()
-    } else if ((fullscreenContainer as any).mozRequestFullScreen) {
-      await (fullscreenContainer as any).mozRequestFullScreen()
-    } else if ((fullscreenContainer as any).msRequestFullscreen) {
-      await (fullscreenContainer as any).msRequestFullscreen()
-    }
+    // 3.0.13 不请求全屏，直接以最大化窗口模式显示
+    // 移除全屏API调用，只保留最大化窗口显示
     
-    // 3.0.14 监听全屏退出事件
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && 
-          !(document as any).webkitFullscreenElement && 
-          !(document as any).mozFullScreenElement && 
-          !(document as any).msFullscreenElement) {
-        closeFullscreenMode(pluginInstance)
-      }
-    }
-    
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange)
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange)
-    
-    pluginInstance.logger.info("Fullscreen roaming mode opened successfully")
-    
-    // 显示测试消息，确认全屏消息功能正常
-    setTimeout(() => {
-      showFullscreenMessage("全屏模式已启动，消息提示功能正常", 2000, "success")
-    }, 500)
+    pluginInstance.logger.info("Maximized window roaming mode opened successfully")
     
   } catch (error) {
-    pluginInstance.logger.error("Failed to open fullscreen mode:", error)
-    showMessage("打开全屏模式失败: " + error.message, 3000, "error")
+    pluginInstance.logger.error("Failed to open maximized window mode:", error)
+    showMessage("打开最大化窗口模式失败: " + error.message, 3000, "error")
   }
 }
 
 /**
- * 3.0.1 关闭全屏模式
- * 清理全屏界面和相关事件监听
+ * 3.0.1 关闭最大化窗口模式
+ * 清理最大化界面和相关事件监听
  *
  * @param pluginInstance 插件实例
  */
 const closeFullscreenMode = (pluginInstance: RandomDocPlugin) => {
   try {
-    // 3.0.1.1 退出全屏
-    if (document.exitFullscreen) {
-      document.exitFullscreen()
-    } else if ((document as any).webkitExitFullscreen) {
-      (document as any).webkitExitFullscreen()
-    } else if ((document as any).mozCancelFullScreen) {
-      (document as any).mozCancelFullScreen()
-    } else if ((document as any).msExitFullscreen) {
-      (document as any).msExitFullscreen()
-    }
+    // 3.0.1.1 不需要退出全屏，直接清理容器即可
     
     // 3.0.1.2 清理消息容器
     const messageContainer = document.getElementById("fullscreen-message-container")
@@ -356,10 +337,10 @@ const closeFullscreenMode = (pluginInstance: RandomDocPlugin) => {
       pluginInstance.tabContentInstance = null
     }
     
-    pluginInstance.logger.info("Fullscreen mode closed successfully")
+    pluginInstance.logger.info("Maximized window mode closed successfully")
     
   } catch (error) {
-    pluginInstance.logger.error("Failed to close fullscreen mode:", error)
+    pluginInstance.logger.error("Failed to close maximized window mode:", error)
   }
 }
 
@@ -371,9 +352,9 @@ const closeFullscreenMode = (pluginInstance: RandomDocPlugin) => {
  */
 const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
   try {
-    // 3.1 移动端使用全屏模式，桌面端使用标签页模式
+    // 3.1 移动端使用最大化窗口模式，桌面端使用标签页模式
     if (pluginInstance.isMobile) {
-      // 移动端：使用全屏模式替代对话框
+      // 移动端：使用最大化窗口模式替代对话框
       await openFullscreenMode(pluginInstance)
       
     } else {
@@ -442,7 +423,7 @@ const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
     }
     
     if (pluginInstance.isMobile) {
-      // 移动端：检查全屏容器是否存在
+      // 移动端：检查最大化窗口容器是否存在
       if (!pluginInstance.fullscreenContainer) {
         await triggerRandomDoc(pluginInstance)
         return
@@ -450,7 +431,7 @@ const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
       
       // 移动端直接调用漫游实例的方法，无需激活标签页
       try {
-        // 模拟点击"继续漫游"按钮 - 在全屏容器内查找
+        // 模拟点击"继续漫游"按钮 - 在最大化窗口容器内查找
         const fullscreenContent = document.getElementById("fullscreen-content")
         if (fullscreenContent) {
           const buttons = fullscreenContent.querySelectorAll('button.primary-btn');
@@ -467,14 +448,14 @@ const continueRandomDoc = async (pluginInstance: RandomDocPlugin) => {
           }
           
           if (!continueButtonFound) {
-            showMessage("未找到继续漫游按钮，请手动点击全屏界面中的继续漫游按钮", 3000, "info");
+            showMessage("未找到继续漫游按钮，请手动点击最大化界面中的继续漫游按钮", 3000, "info");
           }
         } else {
-          showMessage("移动端全屏界面未找到，请重新打开漫游功能", 3000, "error");
+          showMessage("移动端最大化界面未找到，请重新打开漫游功能", 3000, "error");
         }
       } catch (error) {
         pluginInstance.logger.error("移动端模拟点击继续漫游按钮失败:", error);
-        showMessage("无法执行继续漫游，请手动点击全屏界面中的继续漫游按钮", 3000, "info");
+        showMessage("无法执行继续漫游，请手动点击最大化界面中的继续漫游按钮", 3000, "info");
       }
       
     } else {

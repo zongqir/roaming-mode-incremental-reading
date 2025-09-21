@@ -44,6 +44,7 @@ import { isDev } from "./Constants"
 import { initTopbar, registerCommand } from "./topbar"
 import KernelApi from "./api/kernel-api"
 import IncrementalReviewer from "./service/IncrementalReviewer"
+import { initFloatingButton } from "./floatingButton"
 
 /**
  * 1. 漫游式渐进阅读插件类
@@ -69,6 +70,10 @@ export default class RandomDocPlugin extends Plugin {
   public fullscreenContainer: HTMLElement | null = null
   /** 1.9 最大化窗口模式消息显示函数 */
   public showFullscreenMessage: any = null
+  /** 1.10 主页面浮动按钮引用 */
+  public floatingButton: HTMLElement | null = null
+  /** 1.11 页面观察器引用 */
+  public pageObserver: MutationObserver | null = null
 
   /**
    * 1.7 插件构造函数
@@ -97,6 +102,8 @@ export default class RandomDocPlugin extends Plugin {
     await initTopbar(this)
     // 2.2 注册插件命令（快捷键）
     await registerCommand(this)
+    // 2.3 初始化主页面浮动按钮（手机端友好）
+    await initFloatingButton(this)
   }
 
   /**
@@ -106,6 +113,12 @@ export default class RandomDocPlugin extends Plugin {
   onunload() {
     // 2.1.1 清理文档总数缓存
     IncrementalReviewer.clearAllCache()
+    
+    // 2.1.2 清理浮动按钮
+    if (this.floatingButton) {
+      const { removeFloatingButton } = require("./floatingButton")
+      removeFloatingButton(this)
+    }
     
     this.logger.info("插件已卸载，缓存已清理")
   }

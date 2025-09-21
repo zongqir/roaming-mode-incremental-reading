@@ -98,4 +98,37 @@ export class BaseApi {
     }
     return resJson
   }
+
+  /**
+   * 批量向思源请求数据
+   * 将多个请求合并为一个批次，减少网络开销
+   *
+   * @param requests - 请求列表，每个请求包含url和data
+   * @returns 批量请求结果，结果顺序与请求顺序一致
+   */
+  public async batchSiyuanRequest(requests: Array<{url: string, data: object}>): Promise<SiyuanData[]> {
+    if (!requests || requests.length === 0) {
+      return []
+    }
+
+    // 如果只有一个请求，直接调用单个请求方法
+    if (requests.length === 1) {
+      const result = await this.siyuanRequest(requests[0].url, requests[0].data)
+      return [result]
+    }
+
+    if (isDev) {
+      this.logger.debug(`开始批量请求，共 ${requests.length} 个请求`)
+    }
+
+    // 并行执行所有请求
+    const promises = requests.map(request => this.siyuanRequest(request.url, request.data))
+    const results = await Promise.all(promises)
+
+    if (isDev) {
+      this.logger.debug(`批量请求完成，返回 ${results.length} 个结果`)
+    }
+
+    return results
+  }
 }

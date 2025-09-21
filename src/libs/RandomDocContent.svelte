@@ -28,6 +28,18 @@
   import { storeName } from "../Constants"
   import RandomDocConfig, { FilterMode } from "../models/RandomDocConfig"
   import { Dialog, openTab, showMessage } from "siyuan"
+  
+  // 智能消息显示函数：在全屏模式下使用自定义消息，否则使用SiYuan原生消息
+  const smartShowMessage = (message: string, duration: number = 3000, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    if (pluginInstance.isMobile && pluginInstance.showFullscreenMessage) {
+      // 全屏模式下使用自定义消息显示
+      pluginInstance.showFullscreenMessage(message, duration, type)
+    } else {
+      // 普通模式下使用SiYuan原生消息显示，只支持info和error类型
+      const siyuanType: 'info' | 'error' = (type === 'error') ? 'error' : 'info'
+      showMessage(message, duration, siyuanType)
+    }
+  }
   import RandomDocPlugin from "../index"
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import MetricsPanel from "./MetricsPanel.svelte"
@@ -70,9 +82,9 @@
   let showManualInput = false // 是否显示手动输入框
   let manualInputId = "" // 手动输入的ID
   
-  let title = pluginInstance.i18n.welcomeTitle
-  let tips = pluginInstance.i18n.welcomeTips
-  let fullTips = pluginInstance.i18n.welcomeTips // 完整的tips内容，包含诗意部分
+  let title = "漫游式渐进阅读"
+  let tips = "欢迎使用漫游式渐进阅读插件"
+  let fullTips = "欢迎使用漫游式渐进阅读插件" // 完整的tips内容，包含诗意部分
   let currentRndId
   let unReviewedCount = 0
   let content = ""
@@ -233,7 +245,7 @@
       }
     } catch (err) {
       pluginInstance.logger.error("拖动排序失败", err)
-      showMessage("拖动排序失败: " + err.message, 3000, "error")
+      smartShowMessage("拖动排序失败: " + err.message, 3000, "error")
       
       // 重新启用所有输入
       document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
@@ -336,7 +348,7 @@
       }
     } catch (err) {
       pluginInstance.logger.error("设置优先级失败", err)
-      showMessage("设置优先级失败: " + err.message, 3000, "error")
+      smartShowMessage("设置优先级失败: " + err.message, 3000, "error")
       
       // 重新启用所有输入
       document.querySelectorAll('.priority-sortable-list input[type="number"]').forEach((input: HTMLInputElement) => {
@@ -440,18 +452,72 @@
           newDocId = result
         }
         if (!newDocId) {
-          content = "没有找到符合条件的文档，这可能是因为随机算法的误差或优先级配置问题。"
-          tips = "调整过滤条件或优先级配置，然后再次尝试。"
-          isLoading = false
-          return
+          pluginInstance.logger.info("没有找到符合条件的文档，可能一轮漫游已完成，自动开始新一轮...")
+          try {
+            // 重置访问记录
+            await resetAllVisitCounts()
+            content = "已完成一轮漫游！"
+            tips = "没有找到符合条件的文档，已自动重置访问记录，开始新一轮漫游..."
+            
+            // 短暂延迟后重新开始漫游
+            setTimeout(async () => {
+              try {
+                await doIncrementalRandomDoc()
+              } catch (retryError) {
+                pluginInstance.logger.error("重新开始漫游失败:", retryError)
+                content = `重新开始漫游失败: ${retryError.message}`
+                tips = "自动重新开始失败，请手动点击继续漫游。"
+                isLoading = false
+              }
+            }, 1000)
+            return
+          } catch (resetError) {
+            pluginInstance.logger.error("自动重置访问记录失败:", resetError)
+            content = "自动重置失败，请手动重置访问记录"
+            tips = "检测到一轮漫游完成，但自动重置失败，请手动重置访问记录后继续。"
+            isLoading = false
+            return
+          }
         }
         
         // 设置当前文档ID
         currentRndId = newDocId
       } catch (error) {
         pluginInstance.logger.error("获取随机文档失败:", error)
+        
+        // 检查是否是因为所有文档都已访问过而导致的错误
+        if (error.message.includes("所有文档都已访问过") || error.message.includes("没有找到符合条件的文档")) {
+          pluginInstance.logger.info("检测到所有文档都已访问，自动开始新一轮...")
+          try {
+            // 重置访问记录
+            await resetAllVisitCounts()
+            content = "已完成一轮漫游！"
+            tips = "所有文档都已访问过，已自动重置访问记录，开始新一轮漫游..."
+            
+            // 短暂延迟后重新开始漫游
+            setTimeout(async () => {
+              try {
+                await doIncrementalRandomDoc()
+              } catch (retryError) {
+                pluginInstance.logger.error("重新开始漫游失败:", retryError)
+                content = `重新开始漫游失败: ${retryError.message}`
+                tips = "自动重新开始失败，请手动点击继续漫游。"
+                isLoading = false
+              }
+            }, 1000)
+            return
+          } catch (resetError) {
+            pluginInstance.logger.error("自动重置访问记录失败:", resetError)
+            content = "自动重置失败，请手动重置访问记录"
+            tips = "检测到一轮漫游完成，但自动重置失败，请手动重置访问记录后继续。"
+            isLoading = false
+            return
+          }
+        }
+        
+        // 其他类型的错误，直接显示错误信息
         content = `获取随机文档失败: ${error.message}`
-        tips = "发生错误，请检查过滤条件和优先级配置。"
+        tips = "发生未知错误，请检查日志获取详细信息。"
         isLoading = false
         return
       }
@@ -546,7 +612,7 @@
         pluginInstance.logger.info(`显示的概率值: ${selectionProbabilityText}, 原始概率值: ${selectionProbability}`)
       } catch (error) {
         pluginInstance.logger.error("获取概率值失败:", error)
-        showMessage("获取概率值失败: " + error.message, 3000, "error")
+        smartShowMessage("获取概率值失败: " + error.message, 3000, "error")
         selectionProbabilityText = "计算出错"
       }
       
@@ -733,7 +799,7 @@
       await pr.resetVisited()
     } catch (error) {
       pluginInstance.logger.error("重置访问记录失败", error)
-      showMessage(`重置失败: ${error.message}`, 5000, "error")
+      smartShowMessage(`重置失败: ${error.message}`, 5000, "error")
       throw error
     }
   }
@@ -801,7 +867,7 @@
     const currentSql = storeConfig.currentSql
     const result = await pluginInstance.kernelApi.sql(currentSql)
     if (result.code !== 0) {
-      showMessage(pluginInstance.i18n.docFetchError, 7000, "error")
+      smartShowMessage(pluginInstance.i18n.docFetchError, 7000, "error")
       throw new Error(result.msg)
     }
 
@@ -1114,7 +1180,7 @@
       }, 500);
     } catch (err) {
       pluginInstance.logger.error("设置优先级失败", err);
-      showMessage("设置优先级失败: " + err.message, 3000, "error");
+      smartShowMessage("设置优先级失败: " + err.message, 3000, "error");
       
       // 恢复UI到拖动前的状态（如果保存了原始状态）
       const pointIndex = priorityBarPoints.findIndex(p => p.id === docId);
@@ -1143,7 +1209,7 @@
       });
     } catch (err) {
       pluginInstance.logger.error("打开文档失败", err);
-      showMessage("打开文档失败: " + err.message, 3000, "error");
+      smartShowMessage("打开文档失败: " + err.message, 3000, "error");
     }
   }
 
@@ -1442,7 +1508,7 @@
   // 处理手动输入ID的确认
   const confirmManualInput = async function () {
     if (!manualInputId || manualInputId.trim() === "") {
-      showMessage("请输入有效的文档ID", 3000, "error")
+      smartShowMessage("请输入有效的文档ID", 3000, "error")
       return
     }
     
@@ -1456,14 +1522,14 @@
         // 文档存在，设置为根文档
         await selectDocument(trimmedId, title)
         showManualInput = false
-        showMessage(`已设置根文档: ${title}`, 2000, "info")
+        smartShowMessage(`已设置根文档: ${title}`, 2000, "info")
       } else {
         // 文档不存在或无标题，询问用户是否仍要使用
         const confirmed = confirm(`无法找到文档标题，文档ID可能无效。是否仍要使用 "${trimmedId}" 作为根文档？`)
         if (confirmed) {
           await selectDocument(trimmedId, "")
           showManualInput = false
-          showMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
+          smartShowMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
         }
       }
     } catch (error) {
@@ -1472,7 +1538,7 @@
       if (confirmed) {
         await selectDocument(trimmedId, "")
         showManualInput = false
-        showMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
+        smartShowMessage(`已设置根文档ID: ${trimmedId}`, 2000, "info")
       }
     }
   }
@@ -1509,6 +1575,7 @@
   const openHelpDoc = () => {
     window.open("https://github.com/ebAobS/roaming-mode-incremental-reading/blob/main/README_zh_CN.md")
   }
+
 
   // 切换笔记本选择
   function toggleNotebook(notebookId) {
@@ -1802,7 +1869,7 @@ const initEditableContent = async () => {
     if (storeConfig?.customSqlEnabled) {
       sqlList = JSON.parse(storeConfig?.sql ?? "[]")
       if (sqlList.length == 0) {
-        showMessage(pluginInstance.i18n.customSqlEmpty, 7000, "error")
+        smartShowMessage(pluginInstance.i18n.customSqlEmpty, 7000, "error")
         return
       }
       currentSql = storeConfig?.currentSql ?? sqlList[0].sql
@@ -1819,10 +1886,10 @@ const initEditableContent = async () => {
           pluginInstance.logger.info("检测到启动时自动重置设置，开始重置已访问文档记录...")
           const filterCondition = pr.buildFilterCondition(storeConfig)
           await pr.resetVisited(filterCondition)
-          showMessage("启动时自动重置已访问文档记录完成", 3000)
+          smartShowMessage("启动时自动重置已访问文档记录完成", 3000)
         } catch (error) {
           pluginInstance.logger.error("启动时自动重置失败:", error)
-          showMessage("启动时自动重置失败: " + error.message, 5000, "error")
+          smartShowMessage("启动时自动重置失败: " + error.message, 5000, "error")
         }
       }
     }
@@ -1839,7 +1906,7 @@ const initEditableContent = async () => {
 <div class="fn__flex-1 protyle" data-loading="finished">
   <!-- 移除Loading组件 -->
   <div class="protyle-content protyle-content--transition" data-fullwidth="true">
-    <div class="protyle-title protyle-wysiwyg--attr" style="margin: 16px 96px 0px;">
+    <div class="protyle-title protyle-wysiwyg--attr" style="margin: 16px 96px 0px; display: none !important;">
       <div
         style="margin:20px 0"
         contenteditable="false"
@@ -1998,18 +2065,18 @@ const initEditableContent = async () => {
           {/if}
           <!-- 移动端显示查看指标按钮 -->
           {#if pluginInstance.isMobile}
-            <button class="action-item b3-button b3-button--outline btn-small" on:click={openMobileMetricsDialog} title="查看文档指标和统计信息">
+            <button class="action-item b3-button b3-button--outline btn-small mobile-btn" on:click={openMobileMetricsDialog} title="查看文档指标和统计信息">
               查看指标
             </button>
           {/if}
-          <button class="action-item b3-button b3-button--outline btn-small reset-button" on:click={openVisitedDocs} title="查看已漫游文档列表">
+          <button class="action-item b3-button b3-button--outline btn-small reset-button mobile-btn" on:click={openVisitedDocs} title="查看已漫游文档列表">
             已漫游文档
           </button>
-          <button class="action-item b3-button b3-button--outline btn-small" on:click={openPriorityDialog} title="优先级排序列表">
+          <button class="action-item b3-button b3-button--outline btn-small mobile-btn" on:click={openPriorityDialog} title="优先级排序列表">
             优先级排序表
           </button>
           <button
-            class="action-item b3-button b3-button--outline btn-small light-btn help-icon"
+            class="action-item b3-button b3-button--outline btn-small light-btn help-icon mobile-btn"
             on:click={() => showSettingMenu(pluginInstance)}
             title={pluginInstance.i18n.setting}
           >
@@ -2159,6 +2226,7 @@ const initEditableContent = async () => {
                   reviewer={pr}
                   metrics={docMetrics}
                   {docPriority}
+                  forceExpanded={true}
                   on:priorityChange={handleMetricsPanelPriorityChange}
                 />
               </div>
@@ -2198,12 +2266,12 @@ const initEditableContent = async () => {
       </div>
       <div class="editable-area-container">
         <div class="editable-header">
-          <span class="editable-title">编辑区域</span>
+          <span class="editable-title">{pluginInstance.isMobile ? title : "编辑区域"}</span>
           <button class="lock-toggle-btn" on:click={toggleLock} title={$isLocked ? pluginInstance.i18n.unlockEditArea : pluginInstance.i18n.lockEditArea}>
             {#if $isLocked}
-              🔒 {pluginInstance.i18n.editAreaLocked}
+              🔒
             {:else}
-              🔓 {pluginInstance.i18n.editAreaUnlocked}
+              🔓
             {/if}
           </button>
         </div>
@@ -2404,6 +2472,406 @@ const initEditableContent = async () => {
     .action-item
       margin-left 3px
 
+  /* 手机端3行布局 - 基于屏幕比例设计 */
+  @media (max-width: 768px) {
+    .action-btn-group {
+      display: flex;
+      flex-wrap: wrap;  /* 允许元素换行到新行 */
+      gap: 1.2vh;  /* 增加行间距从0.5vh到1.2vh，让布局更宽松 */
+      margin: 1vh 0;  /* 增加外边距从0.5vh到1vh */
+      max-height: 18vh;  /* 适当增加最大高度以适应更大的间距 */
+    }
+    
+    /* 第一行：筛选区域 - 三元素自适应布局 */
+    .action-btn-group .filter-label {
+      order: 1;
+      font-size: 3.8vw;  /* 增大字体，提高可读性 */
+      flex: 0 0 auto;  /* 恢复自适应宽度 */
+      align-self: center;  /* 垂直居中对齐 */
+      text-align: left;  /* 左对齐 */
+      font-weight: 500;  /* 增加字体粗细 */
+      padding: 0.8vh 1vw 0.8vh 0;  /* 增加上下内边距，右边留少量边距 */
+      line-height: 1.4;  /* 增加行高 */
+      white-space: nowrap;  /* 防止换行 */
+    }
+    
+    .action-btn-group .action-item.b3-select {
+      order: 1;
+      min-height: 5vh;  /* 增加高度从4.5vh到5vh */
+      font-size: 3.4vw;  /* 增大字体 */
+      padding: 1vh 1vw;  /* 增加内边距从0.6vh到1vh */
+      flex: 1 1 auto;  /* 恢复自适应宽度，占用剩余空间 */
+      box-sizing: border-box;
+      text-align: center;  /* 文字居中 */
+    }
+    
+    .action-btn-group .notebook-selector,
+    .action-btn-group .tag-selector {
+      order: 1;
+      flex: 1 1 auto;  /* 自适应占用剩余空间 */
+      min-width: 0;  /* 允许收缩 */
+      position: relative;  /* 为下拉菜单定位做准备 */
+    }
+    
+    /* 第三个筛选按钮：占用剩余空间但有最大宽度限制 */
+    .action-btn-group .notebook-selector button.fn__size150,
+    .action-btn-group .tag-selector button.fn__size150,
+    .action-btn-group .notebook-selector button,
+    .action-btn-group .tag-selector button {
+      width: 100% !important;  /* 占满父容器宽度 */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: 100% !important;  /* 不超过父容器 */
+      flex: none !important;  /* 不参与flex计算 */
+      padding: 0.6vh 1vw !important;  /* 增加内边距 */
+      min-height: 4.5vh !important;  /* 与其他元素保持一致的高度 */
+      font-size: 3.4vw !important;  /* 与筛选类型选择框一致的字体大小 */
+      white-space: nowrap !important;  /* 不换行 */
+      overflow: hidden !important;  /* 超出部分隐藏 */
+      text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
+      box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
+    }
+    
+    /* 确保下拉菜单不影响布局 */
+    .action-btn-group .notebook-list,
+    .action-btn-group .tag-list {
+      position: absolute !important;
+      top: 100% !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 1000 !important;
+      width: 100% !important;  /* 相对于父容器宽度 */
+      min-width: 0 !important;  /* 移除最小宽度限制，让它完全跟随父容器 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      box-sizing: border-box !important;
+    }
+    
+    /* 移动端下拉菜单按钮优化 */
+    .notebook-list .confirm-button-container,
+    .tag-list .confirm-button-container {
+      gap: 6px !important;
+      margin-top: 6px !important;
+    }
+    
+    
+    /* 第二行：继续漫游按钮 - 独占一行 */
+    .action-btn-group .primary-btn {
+      order: 2;
+      width: 100%;  /* 占满整行 */
+      min-height: 6vh;  /* 增加按钮高度从5.5vh到6vh */
+      font-size: 4.2vw;  /* 增大字体到4.2vw */
+      padding: 1.4vh 1.5vw;  /* 增加内边距从1vh到1.4vh */
+      margin: 0.6vh 0;  /* 增加上下外边距 */
+      font-weight: 600;  /* 增加字体粗细 */
+    }
+    
+    /* 第三行：4个操作按钮 - 水平排列 */
+    .action-btn-group .mobile-btn {
+      order: 3;
+      min-height: 3.5vh;  /* 增加高度 */
+      font-size: 2.5vw;  /* 增大字体 */
+      padding: 0.4vh 0.3vw;  /* 增加内边距 */
+      flex-shrink: 0;
+    }
+    
+    /* 第三行：四个操作按钮 - 铺满整行，按比例分配 */
+    .action-btn-group .mobile-btn:not(.help-icon) {
+      order: 3;  /* 第三行 */
+      flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
+      min-height: 5vh;  /* 增加按钮高度从4vh到5vh */
+      font-size: 3.5vw;  /* 增大字体到3.5vw */
+      padding: 1vh 0.8vw;  /* 增加内边距从0.6vh到1vh */
+      margin: 0.4vh 0.2vw;  /* 增加外边距让按钮之间更宽松 */
+      flex-shrink: 0;
+    }
+    
+    /* 设置图标已在第一行定义，这里不需要重复定义 */
+    
+    .action-btn-group .help-icon svg {
+      width: 24px !important;  /* 增大图标尺寸 */
+      height: 24px !important;
+    }
+    
+    /* 编辑区域锁定按钮移动端样式 - 和设置图标类似 */
+    .editable-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1vh 1vw;  /* 增加内边距 */
+      background-color: var(--b3-theme-background);  /* 改为背景色，让它更融合 */
+      border-bottom: none;  /* 移除下边框 */
+      margin-bottom: 0;  /* 移除下边距 */
+    }
+    
+    .editable-title {
+      font-size: 6vw;  /* 再次增大字体到6vw，更易阅读 */
+      font-weight: 600;  /* 增加字体粗细 */
+      color: var(--b3-theme-on-surface);
+      text-align: center;  /* 居中显示 */
+      flex: 1;  /* 占用剩余空间，让居中更明显 */
+    }
+    
+    /* 移动端锁定按钮样式 - 恢复显示 */
+    .editable-header .lock-toggle-btn {
+      width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
+      min-height: 4vh !important;  /* 和设置图标相同的高度 */
+      padding: 0.8vh 0.4vw !important;  /* 增加内边距 */
+      font-size: 3.2vw !important;  /* 稍微增大图标尺寸 */
+      border: 1px solid var(--b3-border-color) !important;
+      border-radius: 6px !important;  /* 更圆润的圆角 */
+      background-color: var(--b3-theme-surface) !important;
+      color: var(--b3-theme-on-surface) !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;  /* 添加轻微阴影 */
+    }
+    
+    .lock-toggle-btn:hover {
+      background-color: var(--b3-theme-surface-hover);
+    }
+    
+    /* 内容区域移动端比例化优化 */
+    .protyle-wysiwyg {
+      padding: 0.5vh 4vw 25vh !important;  /* 使用视口单位，减少上边距，增加下边距 */
+      font-size: 4vw;  /* 使用视口宽度作为字体大小 */
+      line-height: 1.6;
+    }
+    
+    /* 文档标题移动端优化 - 更大更易读 */
+    .protyle-wysiwyg h1 {
+      font-size: 28px;
+      line-height: 1.3;
+      margin: 12px 0;
+      word-break: break-word;
+      white-space: normal;
+      font-weight: 600;
+    }
+    
+    /* 整体上移，减少顶部间距 */
+    .protyle-wysiwyg {
+      margin-top: -8px;
+    }
+    
+    /* 移动端隐藏原始标题区域，让文档标题直接显示在顶部 */
+    .protyle .protyle-content .protyle-title.protyle-wysiwyg--attr {
+      display: none !important;
+    }
+    
+    /* 移动端让文档标题显示在顶部 */
+    .protyle-wysiwyg h1 {
+      margin-top: 0;
+      padding-top: 16px;
+    }
+    
+    /* 状态信息栏移动端优化 */
+    .status-info {
+      padding: 12px 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    
+    /* 编辑区域标题移动端优化 */
+    .editing-area-header {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+  }
+
+  /* 超小屏幕3行布局优化 */
+  @media (max-width: 480px) {
+    .action-btn-group {
+      gap: 1vh;  /* 增加间距从0.3vh到1vh */
+      margin: 0.8vh 0;  /* 增加外边距从0.3vh到0.8vh */
+      max-height: 15vh;  /* 增加最大高度从12vh到15vh */
+    }
+    
+    /* 第一行：筛选区域 - 三元素自适应布局（超小屏幕优化） */
+    .action-btn-group .filter-label {
+      order: 1;
+      font-size: 3.2vw;  /* 增大字体 */
+      flex: 0 0 auto;  /* 恢复自适应宽度 */
+      align-self: center;
+      text-align: left;
+      font-weight: 500;
+      padding: 0.6vh 0.8vw 0.6vh 0;  /* 增加上下内边距，右边留少量边距 */
+      line-height: 1.3;  /* 增加行高 */
+      white-space: nowrap;  /* 防止换行 */
+    }
+    
+    .action-btn-group .action-item.b3-select {
+      order: 1;
+      min-height: 4.5vh;  /* 增加高度从4vh到4.5vh */
+      font-size: 3vw;  /* 增大字体 */
+      padding: 0.8vh 0.8vw;  /* 增加内边距从0.5vh到0.8vh */
+      flex: 1 1 auto;  /* 恢复自适应宽度，占用剩余空间 */
+      box-sizing: border-box;
+      text-align: center;  /* 文字居中 */
+    }
+    
+    .action-btn-group .notebook-selector,
+    .action-btn-group .tag-selector {
+      order: 1;
+      flex: 1 1 auto;  /* 自适应占用剩余空间 */
+      min-width: 0 !important;  /* 允许收缩 */
+      position: relative;
+    }
+    
+    .action-btn-group .help-icon {
+      order: 3 !important;  /* 设置图标在第三行 */
+      flex: 0 0 15%;  /* 设置图标固定占15% */
+      min-height: 3vh !important;  /* 与其他按钮保持一致的高度 */
+      padding: 0.3vh 0.2vw !important;  /* 减少内边距 */
+    }
+    
+    /* 第三个筛选按钮在超小屏幕：占满父容器 - 使用更高特异性覆盖fn__size150 */
+    .action-btn-group .notebook-selector button.fn__size150,
+    .action-btn-group .tag-selector button.fn__size150,
+    .action-btn-group .notebook-selector button,
+    .action-btn-group .tag-selector button {
+      width: 100% !important;  /* 占满父容器宽度 */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: 100% !important;  /* 不超过父容器 */
+      flex: none !important;  /* 不参与flex计算 */
+      padding: 0.5vh 0.8vw !important;  /* 增加内边距 */
+      min-height: 4vh !important;  /* 与其他元素保持一致的高度 */
+      font-size: 3vw !important;  /* 与筛选类型选择框一致的字体大小 */
+      white-space: nowrap !important;  /* 不换行 */
+      overflow: hidden !important;  /* 超出部分隐藏 */
+      text-overflow: ellipsis !important;  /* 超出部分显示省略号 */
+      box-sizing: border-box !important;  /* 确保padding包含在宽度内 */
+    }
+    
+    /* 确保超小屏幕下拉菜单不影响布局 */
+    .action-btn-group .notebook-list,
+    .action-btn-group .tag-list {
+      position: absolute !important;
+      top: 100% !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 1000 !important;
+      width: 100% !important;  /* 相对于父容器宽度 */
+      min-width: 0 !important;  /* 移除最小宽度限制，让它完全跟随父容器 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      box-sizing: border-box !important;
+    }
+    
+    /* 超小屏幕下拉菜单按钮优化 */
+    .notebook-list .confirm-button-container,
+    .tag-list .confirm-button-container {
+      gap: 4px !important;
+      margin-top: 4px !important;
+    }
+    
+    /* 使用更高优先级的选择器覆盖fn__size150类 */
+    .notebook-list .confirm-button-container button.fn__size150,
+    .tag-list .confirm-button-container button.fn__size150,
+    .notebook-list .confirm-button-container button,
+    .tag-list .confirm-button-container button {
+      flex: 1 1 0 !important;  /* 按钮平分宽度 */
+      min-width: 0 !important;  /* 允许收缩 */
+      max-width: none !important;  /* 移除最大宽度限制 */
+      width: auto !important;  /* 覆盖fn__size150的固定宽度 */
+      padding: 0.5vh 0.6vw !important;  /* 使用视口单位，稍小一些 */
+      font-size: 2.8vw !important;  /* 使用视口宽度单位，稍小一些 */
+      min-height: 3.2vh !important;  /* 设置最小高度，稍小一些 */
+      white-space: nowrap !important;  /* 防止换行 */
+      box-sizing: border-box !important;  /* 确保正确的盒模型 */
+    }
+    
+    /* 第二行：继续漫游按钮在超小屏幕 - 独占一行 */
+    .action-btn-group .primary-btn {
+      order: 2;
+      width: 100%;  /* 占满整行 */
+      min-height: 5.5vh;  /* 增加按钮高度从5vh到5.5vh */
+      font-size: 4vw;  /* 增大字体到4vw */
+      padding: 1.2vh 1.2vw;  /* 增加内边距从0.8vh到1.2vh */
+      margin: 0.5vh 0;  /* 增加上下外边距 */
+      font-weight: 600;  /* 增加字体粗细 */
+    }
+    
+    /* 第三行：4个操作按钮在超小屏幕 - 水平排列 */
+    .action-btn-group .mobile-btn {
+      order: 3;
+      min-height: 3vh;  /* 增加高度 */
+      font-size: 2.2vw;  /* 增大字体 */
+      padding: 0.3vh 0.2vw;  /* 增加内边距 */
+      flex-shrink: 0;
+    }
+    
+    /* 第三行：四个操作按钮在超小屏幕 - 铺满整行，按比例分配 */
+    .action-btn-group .mobile-btn:not(.help-icon) {
+      order: 3;  /* 第三行 */
+      flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
+      min-height: 4.5vh;  /* 增加按钮高度从3.5vh到4.5vh */
+      font-size: 3.2vw;  /* 增大字体到3.2vw */
+      padding: 0.8vh 0.6vw;  /* 增加内边距从0.4vh到0.8vh */
+      margin: 0.3vh 0.2vw;  /* 增加外边距让按钮之间更宽松 */
+      flex-shrink: 0;
+    }
+    
+    /* 设置图标已在第一行定义，这里不需要重复定义 */
+    
+    .action-btn-group .help-icon svg {
+      width: 22px !important;  /* 增大图标尺寸 */
+      height: 22px !important;
+    }
+    
+    
+    /* 编辑区域锁定按钮超小屏幕样式 - 和设置图标类似 */
+    .editable-header {
+      padding: 0.8vh 0.8vw;  /* 增加内边距 */
+      background-color: var(--b3-theme-background);  /* 保持背景融合 */
+      border-bottom: none;  /* 移除下边框 */
+    }
+    
+    .editable-title {
+      font-size: 5.5vw;  /* 再次增大字体到5.5vw，更易阅读 */
+      font-weight: 600;  /* 增加字体粗细 */
+      text-align: center;  /* 居中显示 */
+      flex: 1;  /* 占用剩余空间，让居中更明显 */
+    }
+    
+    /* 超小屏幕锁定按钮样式 - 恢复显示 */
+    .editable-header .lock-toggle-btn {
+      width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
+      min-height: 4vh !important;  /* 和设置图标相同的高度 */
+      padding: 0.7vh 0.3vw !important;  /* 增加内边距 */
+      font-size: 3vw !important;  /* 稍微增大图标尺寸 */
+      border: 1px solid var(--b3-border-color) !important;
+      border-radius: 6px !important;  /* 更圆润的圆角 */
+      background-color: var(--b3-theme-surface) !important;
+      color: var(--b3-theme-on-surface) !important;
+      cursor: pointer !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    
+    /* 文档标题在超小屏幕 - 更大更易读 */
+    .protyle-wysiwyg h1 {
+      font-size: 26px;
+      margin: 10px 0;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    
+    .protyle-wysiwyg {
+      padding: 8px 12px 150px !important;
+      font-size: 15px;
+    }
+    
+    .status-info {
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    
+    .editing-area-header {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+  }
+
   .filter-label
     font-size 13px
     margin-left 2px
@@ -2469,7 +2937,9 @@ const initEditableContent = async () => {
     padding: 8px
     max-height: 300px
     overflow-y: auto
-    width: 200px
+    width: 100%  /* 改为100%，相对于父容器宽度 */
+    min-width: 200px  /* 设置最小宽度，保证内容不会太挤 */
+    box-sizing: border-box
     
   .notebook-item
     display: block
@@ -2488,7 +2958,21 @@ const initEditableContent = async () => {
     display: flex
     justify-content: center
     margin-top: 8px
+    gap: 8px
+    
+    button
+      flex: 0 0 auto  /* 按钮宽度自适应内容 */
+      min-width: 60px  /* 设置最小宽度 */
+      max-width: none  /* 桌面端不限制最大宽度，让按钮自适应内容 */
+      padding: 6px 12px  /* 调整内边距 */
+      font-size: 13px  /* 设置合适的字体大小 */
 
+  /* 桌面端下拉菜单按钮覆盖fn__size150的固定宽度 */
+  .notebook-list .confirm-button-container button.fn__size150,
+  .tag-list .confirm-button-container button.fn__size150
+    width: auto !important  /* 覆盖fn__size150的固定宽度 */
+    max-width: none !important  /* 不限制最大宽度 */
+    min-width: 60px !important  /* 保持最小宽度 */
 
   .editable-content-area
     min-height: 400px
@@ -2500,7 +2984,12 @@ const initEditableContent = async () => {
     outline: none
     transition: border-color 0.2s ease
     
-    &:focus
+    &.locked
+      background-color: var(--b3-theme-background)  /* 保持和解锁状态一样的背景色 */
+      color: var(--b3-theme-on-surface)
+      cursor: not-allowed
+    
+    &:focus:not(.locked)
       border-color: var(--b3-theme-primary)
       box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter)
     
@@ -2871,7 +3360,9 @@ const initEditableContent = async () => {
     padding: 8px
     max-height: 300px
     overflow-y: auto
-    width: 200px
+    width: 100%  /* 改为100%，相对于父容器宽度 */
+    min-width: 200px  /* 设置最小宽度，保证内容不会太挤 */
+    box-sizing: border-box
   
   .tag-item
     display: block
@@ -2905,31 +3396,58 @@ const initEditableContent = async () => {
     border-radius: 6px
     overflow: hidden
 
-  .editable-header
-    display: flex
-    justify-content: space-between
-    align-items: center
-    padding: 8px 12px
-    background-color: var(--b3-theme-surface)
-    border-bottom: 1px solid var(--b3-border-color)
-    
-  .editable-title
-    font-size: 14px
-    font-weight: 500
-    color: var(--b3-theme-on-background)
+  /* 移动端编辑区域容器优化 */
+  @media (max-width: 768px) {
+    .editable-area-container {
+      margin-top: 6px;  /* 减少上边距，让锁和内容更贴近 */
+      border-radius: 8px;  /* 更圆润的圆角 */
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);  /* 添加轻微阴影 */
+    }
+  }
 
-  .lock-toggle-btn
-    background: none
-    border: 1px solid var(--b3-border-color)
-    padding: 4px 8px
-    border-radius: 4px
-    cursor: pointer
-    font-size: 12px
-    transition: all 0.2s ease
+  /* 超小屏幕编辑区域容器优化 */
+  @media (max-width: 480px) {
+    .editable-area-container {
+      margin-top: 4px;  /* 进一步减少上边距 */
+      border-radius: 10px;  /* 更圆润的圆角 */
+    }
+  }
+
+  /* 桌面端编辑区域头部样式 */
+  @media (min-width: 769px) {
+    .editable-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background-color: var(--b3-theme-surface);
+      border-bottom: 1px solid var(--b3-border-color);
+    }
     
-    &:hover
-      background-color: var(--b3-theme-surface-light)
-      border-color: var(--b3-theme-primary)
+    .editable-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--b3-theme-on-background);
+    }
+  }
+
+  /* 桌面端锁定按钮样式 */
+  @media (min-width: 769px) {
+    .lock-toggle-btn {
+      background: none;
+      border: 1px solid var(--b3-border-color);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
+    
+    .lock-toggle-btn:hover {
+      background-color: var(--b3-theme-surface-light);
+      border-color: var(--b3-theme-primary);
+    }
+  }
 
   .editable-content-area
     min-height: 200px
@@ -2939,8 +3457,8 @@ const initEditableContent = async () => {
     transition: all 0.2s ease
     
     &.locked
-      background-color: var(--b3-theme-surface-light)
-      color: var(--b3-theme-on-surface-light)
+      background-color: var(--b3-theme-background)
+      color: var(--b3-theme-on-surface)
       cursor: not-allowed
       
     &:focus:not(.locked)

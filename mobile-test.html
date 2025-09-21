@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>移动端测试 - 漫游式渐进阅读</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .metrics-panel {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #fff;
+            font-size: 13px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            line-height: 1.5;
+        }
+        
+        .metrics-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .metrics-title h3 {
+            font-size: 18px;
+            margin: 0;
+        }
+        
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 6px 0;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .metric-controls button {
+            width: 24px;
+            height: 24px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+            background-color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .metric-value {
+            width: 40px;
+            text-align: center;
+            margin: 0 4px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .form-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        input[type="text"], input[type="number"] {
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .test-container {
+                padding: 16px;
+            }
+            
+            h1 {
+                font-size: 28px;
+                line-height: 1.3;
+            }
+            
+            h2 {
+                font-size: 24px;
+                line-height: 1.3;
+            }
+            
+            .metrics-title h3 {
+                font-size: 20px;
+            }
+            
+            .metrics-panel {
+                padding: 14px 16px;
+                font-size: 14px;
+                margin: 16px 4px;
+                line-height: 1.6;
+            }
+            
+            .metrics-title {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 14px;
+                margin-bottom: 14px;
+                padding-bottom: 10px;
+            }
+            
+            .metric-item {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+                padding: 10px 0;
+                margin-bottom: 12px;
+                border-bottom: 1px solid #ddd;
+            }
+            
+            .metric-item:last-child {
+                border-bottom: none;
+            }
+            
+            .metric-controls {
+                justify-content: center;
+                gap: 8px;
+            }
+            
+            .metric-controls button {
+                width: 32px;
+                height: 32px;
+                font-size: 16px;
+            }
+            
+            .metric-value {
+                width: 60px;
+                font-size: 14px;
+                padding: 4px 6px;
+            }
+            
+            .form-row {
+                flex-direction: column;
+                gap: 16px;
+            }
+            
+            .form-group {
+                width: 100%;
+            }
+            
+            input[type="text"], input[type="number"] {
+                padding: 10px 12px;
+                font-size: 15px;
+            }
+            
+            button {
+                padding: 12px 20px;
+                font-size: 18px;
+                width: 100%;
+            }
+        }
+        
+        /* 超小屏幕适配 */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 26px;
+                line-height: 1.2;
+            }
+            
+            h2 {
+                font-size: 22px;
+                line-height: 1.2;
+            }
+            
+            .metrics-title h3 {
+                font-size: 18px;
+            }
+            
+            .metrics-panel {
+                padding: 16px 18px;
+                margin: 20px 2px;
+            }
+            
+            .metric-controls button {
+                width: 28px;
+                height: 28px;
+                font-size: 14px;
+            }
+            
+            .metric-value {
+                width: 50px;
+                font-size: 13px;
+            }
+            
+            input[type="text"], input[type="number"] {
+                padding: 8px 10px;
+                font-size: 14px;
+            }
+            
+            button {
+                padding: 10px 16px;
+                font-size: 17px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>移动端显示测试</h1>
+        <p>这个页面用于测试漫游式渐进阅读插件的移动端显示效果。</p>
+        
+        <h2>指标面板测试</h2>
+        <div class="metrics-panel">
+            <div class="metrics-title">
+                <div class="title-left">
+                    <h3>文档指标</h3>
+                </div>
+                <div class="priority-edit-row">
+                    <span class="priority-label">优先级</span>
+                    <div class="priority-edit-group">
+                        <button>-</button>
+                        <input type="number" value="7.5" class="priority-input">
+                        <button>+</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="metrics-list">
+                <div class="metric-item">
+                    <div class="metric-name">重要性 (30%)</div>
+                    <div class="metric-controls">
+                        <button>-</button>
+                        <input type="number" value="8.0" class="metric-value">
+                        <button>+</button>
+                    </div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-name">紧急性 (25%)</div>
+                    <div class="metric-controls">
+                        <button>-</button>
+                        <input type="number" value="6.5" class="metric-value">
+                        <button>+</button>
+                    </div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-name">难度 (20%)</div>
+                    <div class="metric-controls">
+                        <button>-</button>
+                        <input type="number" value="5.0" class="metric-value">
+                        <button>+</button>
+                    </div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-name">兴趣度 (25%)</div>
+                    <div class="metric-controls">
+                        <button>-</button>
+                        <input type="number" value="9.0" class="metric-value">
+                        <button>+</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="roaming-count-section">
+                <div class="roaming-count">漫游次数：3</div>
+                <div class="roaming-last">上次访问：2025-01-27 14:30</div>
+            </div>
+        </div>
+        
+        <h2>表单测试</h2>
+        <div class="form-row">
+            <div class="form-group">
+                <label>指标ID</label>
+                <input type="text" placeholder="输入指标ID">
+            </div>
+            <div class="form-group">
+                <label>指标名称</label>
+                <input type="text" placeholder="输入指标名称">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>权重 (%)</label>
+                <input type="number" value="10" min="1" max="100">
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" placeholder="指标描述">
+            </div>
+        </div>
+        
+        <button>添加指标</button>
+        
+        <h2>测试说明</h2>
+        <ul>
+            <li>在移动设备上打开此页面</li>
+            <li>检查指标面板的布局是否合理</li>
+            <li>验证表单元素是否易于操作</li>
+            <li>确认文字大小是否适合阅读</li>
+            <li>测试按钮是否足够大，便于点击</li>
+        </ul>
+    </div>
+</body>
+</html>

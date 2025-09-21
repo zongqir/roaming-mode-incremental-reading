@@ -505,22 +505,23 @@
 
 <style>
   .metrics-panel {
-    margin-top: 8px;
-    padding: 6px 8px;
+    margin-top: 12px;
+    padding: 10px 12px;
     border: 1px solid var(--b3-border-color);
     border-radius: 4px;
     background-color: var(--b3-theme-background);
     font-size: 13px;
     box-shadow: var(--b3-dialog-shadow);
+    line-height: 1.5;
   }
   
   .metrics-title {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 6px;
+    margin-bottom: 10px;
     border-bottom: 1px solid var(--b3-border-color);
-    padding-bottom: 4px;
+    padding-bottom: 8px;
   }
   .priority-edit-row {
     display: flex;
@@ -619,8 +620,8 @@
   }
   
   .roaming-count-section {
-    margin-top: 8px;
-    padding-top: 6px;
+    margin-top: 12px;
+    padding-top: 10px;
     border-top: 1px solid var(--b3-border-color);
     display: flex;
     justify-content: space-between;
@@ -647,8 +648,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
-    padding: 2px 0;
+    margin-bottom: 8px;
+    padding: 6px 0;
   }
   
   .metric-name {
@@ -780,5 +781,58 @@
     font-weight: bold;
     margin-top: 2px;
     margin-left: 2px;
+  }
+
+  /* 移动端间距优化 */
+  @media (max-width: 768px) {
+    .metrics-panel {
+      margin-top: 16px;
+      padding: 14px 16px;
+      line-height: 1.6;
+    }
+    
+    .metrics-title {
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+    }
+    
+    .metric-item {
+      margin-bottom: 12px;
+      padding: 8px 0;
+    }
+    
+    .roaming-count-section {
+      margin-top: 16px;
+      padding-top: 12px;
+    }
+    
+    .roaming-count,
+    .roaming-last {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+  }
+
+  /* 超小屏幕进一步优化 */
+  @media (max-width: 480px) {
+    .metrics-panel {
+      margin-top: 20px;
+      padding: 16px 18px;
+    }
+    
+    .metrics-title {
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+    }
+    
+    .metric-item {
+      margin-bottom: 14px;
+      padding: 10px 0;
+    }
+    
+    .roaming-count-section {
+      margin-top: 18px;
+      padding-top: 14px;
+    }
   }
 </style> 

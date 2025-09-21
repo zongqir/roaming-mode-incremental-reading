@@ -2476,36 +2476,39 @@ const initEditableContent = async () => {
     .action-btn-group {
       display: flex;
       flex-wrap: wrap;  /* 允许元素换行到新行 */
-      gap: 0.5vh;  /* 使用视口高度的0.5%作为行间距 */
-      margin: 0.5vh 0;  /* 使用视口高度的0.5%作为外边距 */
-      max-height: 15vh;  /* 限制按钮区域最大高度为屏幕高度的15% */
+      gap: 1.2vh;  /* 增加行间距从0.5vh到1.2vh，让布局更宽松 */
+      margin: 1vh 0;  /* 增加外边距从0.5vh到1vh */
+      max-height: 18vh;  /* 适当增加最大高度以适应更大的间距 */
     }
     
-    /* 第一行：筛选区域 - 三元素平铺整行，合理分配宽度 */
+    /* 第一行：筛选区域 - 三元素自适应布局 */
     .action-btn-group .filter-label {
       order: 1;
       font-size: 3.8vw;  /* 增大字体，提高可读性 */
-      flex: 0 0 18%;  /* 固定18%宽度，给筛选文字更多空间 */
+      flex: 0 0 auto;  /* 恢复自适应宽度 */
       align-self: center;  /* 垂直居中对齐 */
       text-align: left;  /* 左对齐 */
       font-weight: 500;  /* 增加字体粗细 */
+      padding: 0.8vh 1vw 0.8vh 0;  /* 增加上下内边距，右边留少量边距 */
+      line-height: 1.4;  /* 增加行高 */
+      white-space: nowrap;  /* 防止换行 */
     }
     
     .action-btn-group .action-item.b3-select {
       order: 1;
-      min-height: 4.5vh;  /* 增加高度 */
+      min-height: 5vh;  /* 增加高度从4.5vh到5vh */
       font-size: 3.4vw;  /* 增大字体 */
-      padding: 0.6vh 1vw;  /* 增加内边距 */
-      flex: 0 0 28%;  /* 固定28%宽度，给筛选类型选择框更多空间 */
+      padding: 1vh 1vw;  /* 增加内边距从0.6vh到1vh */
+      flex: 1 1 auto;  /* 恢复自适应宽度，占用剩余空间 */
       box-sizing: border-box;
+      text-align: center;  /* 文字居中 */
     }
     
     .action-btn-group .notebook-selector,
     .action-btn-group .tag-selector {
       order: 1;
-      flex: 1 1 0;  /* 占用剩余空间（约54%），自适应 */
+      flex: 1 1 auto;  /* 自适应占用剩余空间 */
       min-width: 0;  /* 允许收缩 */
-      max-width: 54%;  /* 限制最大宽度，避免过度扩展 */
       position: relative;  /* 为下拉菜单定位做准备 */
     }
     
@@ -2553,10 +2556,10 @@ const initEditableContent = async () => {
     .action-btn-group .primary-btn {
       order: 2;
       width: 100%;  /* 占满整行 */
-      min-height: 5.5vh;  /* 增加按钮高度到5.5vh */
+      min-height: 6vh;  /* 增加按钮高度从5.5vh到6vh */
       font-size: 4.2vw;  /* 增大字体到4.2vw */
-      padding: 1vh 1.5vw;  /* 增加内边距 */
-      margin: 0;
+      padding: 1.4vh 1.5vw;  /* 增加内边距从1vh到1.4vh */
+      margin: 0.6vh 0;  /* 增加上下外边距 */
       font-weight: 600;  /* 增加字体粗细 */
     }
     
@@ -2573,10 +2576,10 @@ const initEditableContent = async () => {
     .action-btn-group .mobile-btn:not(.help-icon) {
       order: 3;  /* 第三行 */
       flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
-      min-height: 4vh;  /* 增加按钮高度 */
+      min-height: 5vh;  /* 增加按钮高度从4vh到5vh */
       font-size: 3.5vw;  /* 增大字体到3.5vw */
-      padding: 0.6vh 0.8vw;  /* 增加内边距 */
-      margin: 0;
+      padding: 1vh 0.8vw;  /* 增加内边距从0.6vh到1vh */
+      margin: 0.4vh 0.2vw;  /* 增加外边距让按钮之间更宽松 */
       flex-shrink: 0;
     }
     
@@ -2592,31 +2595,35 @@ const initEditableContent = async () => {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.5vh 1vw;  /* 使用视口单位 */
-      background-color: var(--b3-theme-surface);
-      border-bottom: 1px solid var(--b3-border-color);
+      padding: 1vh 1vw;  /* 增加内边距 */
+      background-color: var(--b3-theme-background);  /* 改为背景色，让它更融合 */
+      border-bottom: none;  /* 移除下边框 */
+      margin-bottom: 0;  /* 移除下边距 */
     }
     
     .editable-title {
-      font-size: 4.5vw;  /* 增大字体到4.5vw，更易阅读 */
+      font-size: 6vw;  /* 再次增大字体到6vw，更易阅读 */
       font-weight: 600;  /* 增加字体粗细 */
       color: var(--b3-theme-on-surface);
+      text-align: center;  /* 居中显示 */
+      flex: 1;  /* 占用剩余空间，让居中更明显 */
     }
     
     /* 移动端锁定按钮样式 - 恢复显示 */
     .editable-header .lock-toggle-btn {
       width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
       min-height: 4vh !important;  /* 和设置图标相同的高度 */
-      padding: 0.5vh 0.2vw !important;  /* 和设置图标相同的内边距 */
-      font-size: 3vw !important;  /* 增大图标尺寸 */
+      padding: 0.8vh 0.4vw !important;  /* 增加内边距 */
+      font-size: 3.2vw !important;  /* 稍微增大图标尺寸 */
       border: 1px solid var(--b3-border-color) !important;
-      border-radius: 4px !important;
+      border-radius: 6px !important;  /* 更圆润的圆角 */
       background-color: var(--b3-theme-surface) !important;
       color: var(--b3-theme-on-surface) !important;
       cursor: pointer !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;  /* 添加轻微阴影 */
     }
     
     .lock-toggle-btn:hover {
@@ -2673,36 +2680,39 @@ const initEditableContent = async () => {
   /* 超小屏幕3行布局优化 */
   @media (max-width: 480px) {
     .action-btn-group {
-      gap: 0.3vh;  /* 更小的视口高度间距 */
-      margin: 0.3vh 0;  /* 更小的视口高度外边距 */
-      max-height: 12vh;  /* 限制按钮区域最大高度为屏幕高度的12% */
+      gap: 1vh;  /* 增加间距从0.3vh到1vh */
+      margin: 0.8vh 0;  /* 增加外边距从0.3vh到0.8vh */
+      max-height: 15vh;  /* 增加最大高度从12vh到15vh */
     }
     
-    /* 第一行：筛选区域 - 三元素平铺整行（超小屏幕优化） */
+    /* 第一行：筛选区域 - 三元素自适应布局（超小屏幕优化） */
     .action-btn-group .filter-label {
       order: 1;
       font-size: 3.2vw;  /* 增大字体 */
-      flex: 0 0 16%;  /* 固定16%宽度 */
+      flex: 0 0 auto;  /* 恢复自适应宽度 */
       align-self: center;
       text-align: left;
       font-weight: 500;
+      padding: 0.6vh 0.8vw 0.6vh 0;  /* 增加上下内边距，右边留少量边距 */
+      line-height: 1.3;  /* 增加行高 */
+      white-space: nowrap;  /* 防止换行 */
     }
     
     .action-btn-group .action-item.b3-select {
       order: 1;
-      min-height: 4vh;  /* 增加高度 */
+      min-height: 4.5vh;  /* 增加高度从4vh到4.5vh */
       font-size: 3vw;  /* 增大字体 */
-      padding: 0.5vh 0.8vw;  /* 增加内边距 */
-      flex: 0 0 26%;  /* 固定26%宽度 */
+      padding: 0.8vh 0.8vw;  /* 增加内边距从0.5vh到0.8vh */
+      flex: 1 1 auto;  /* 恢复自适应宽度，占用剩余空间 */
       box-sizing: border-box;
+      text-align: center;  /* 文字居中 */
     }
     
     .action-btn-group .notebook-selector,
     .action-btn-group .tag-selector {
       order: 1;
-      flex: 1 1 0;  /* 占用剩余空间（约58%） */
+      flex: 1 1 auto;  /* 自适应占用剩余空间 */
       min-width: 0 !important;  /* 允许收缩 */
-      max-width: 58% !important;  /* 限制最大宽度 */
       position: relative;
     }
     
@@ -2772,9 +2782,10 @@ const initEditableContent = async () => {
     .action-btn-group .primary-btn {
       order: 2;
       width: 100%;  /* 占满整行 */
-      min-height: 5vh;  /* 增加按钮高度到5vh */
+      min-height: 5.5vh;  /* 增加按钮高度从5vh到5.5vh */
       font-size: 4vw;  /* 增大字体到4vw */
-      padding: 0.8vh 1.2vw;  /* 增加内边距 */
+      padding: 1.2vh 1.2vw;  /* 增加内边距从0.8vh到1.2vh */
+      margin: 0.5vh 0;  /* 增加上下外边距 */
       font-weight: 600;  /* 增加字体粗细 */
     }
     
@@ -2791,10 +2802,10 @@ const initEditableContent = async () => {
     .action-btn-group .mobile-btn:not(.help-icon) {
       order: 3;  /* 第三行 */
       flex: 1 1 0;  /* 前三个按钮平均分配剩余空间 */
-      min-height: 3.5vh;  /* 增加按钮高度 */
+      min-height: 4.5vh;  /* 增加按钮高度从3.5vh到4.5vh */
       font-size: 3.2vw;  /* 增大字体到3.2vw */
-      padding: 0.4vh 0.6vw;  /* 增加内边距 */
-      margin: 0;
+      padding: 0.8vh 0.6vw;  /* 增加内边距从0.4vh到0.8vh */
+      margin: 0.3vh 0.2vw;  /* 增加外边距让按钮之间更宽松 */
       flex-shrink: 0;
     }
     
@@ -2808,22 +2819,26 @@ const initEditableContent = async () => {
     
     /* 编辑区域锁定按钮超小屏幕样式 - 和设置图标类似 */
     .editable-header {
-      padding: 0.4vh 0.8vw;  /* 使用视口单位 */
+      padding: 0.8vh 0.8vw;  /* 增加内边距 */
+      background-color: var(--b3-theme-background);  /* 保持背景融合 */
+      border-bottom: none;  /* 移除下边框 */
     }
     
     .editable-title {
-      font-size: 4.2vw;  /* 增大字体到4.2vw，更易阅读 */
+      font-size: 5.5vw;  /* 再次增大字体到5.5vw，更易阅读 */
       font-weight: 600;  /* 增加字体粗细 */
+      text-align: center;  /* 居中显示 */
+      flex: 1;  /* 占用剩余空间，让居中更明显 */
     }
     
     /* 超小屏幕锁定按钮样式 - 恢复显示 */
     .editable-header .lock-toggle-btn {
       width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
       min-height: 4vh !important;  /* 和设置图标相同的高度 */
-      padding: 0.5vh 0.2vw !important;  /* 和设置图标相同的内边距 */
-      font-size: 2.8vw !important;  /* 增大图标尺寸 */
+      padding: 0.7vh 0.3vw !important;  /* 增加内边距 */
+      font-size: 3vw !important;  /* 稍微增大图标尺寸 */
       border: 1px solid var(--b3-border-color) !important;
-      border-radius: 4px !important;
+      border-radius: 6px !important;  /* 更圆润的圆角 */
       background-color: var(--b3-theme-surface) !important;
       color: var(--b3-theme-on-surface) !important;
       cursor: pointer !important;
@@ -2968,7 +2983,12 @@ const initEditableContent = async () => {
     outline: none
     transition: border-color 0.2s ease
     
-    &:focus
+    &.locked
+      background-color: var(--b3-theme-background)  /* 保持和解锁状态一样的背景色 */
+      color: var(--b3-theme-on-surface)
+      cursor: not-allowed
+    
+    &:focus:not(.locked)
       border-color: var(--b3-theme-primary)
       box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter)
     
@@ -3375,6 +3395,23 @@ const initEditableContent = async () => {
     border-radius: 6px
     overflow: hidden
 
+  /* 移动端编辑区域容器优化 */
+  @media (max-width: 768px) {
+    .editable-area-container {
+      margin-top: 6px;  /* 减少上边距，让锁和内容更贴近 */
+      border-radius: 8px;  /* 更圆润的圆角 */
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);  /* 添加轻微阴影 */
+    }
+  }
+
+  /* 超小屏幕编辑区域容器优化 */
+  @media (max-width: 480px) {
+    .editable-area-container {
+      margin-top: 4px;  /* 进一步减少上边距 */
+      border-radius: 10px;  /* 更圆润的圆角 */
+    }
+  }
+
   /* 桌面端编辑区域头部样式 */
   @media (min-width: 769px) {
     .editable-header {
@@ -3419,8 +3456,8 @@ const initEditableContent = async () => {
     transition: all 0.2s ease
     
     &.locked
-      background-color: var(--b3-theme-surface-light)
-      color: var(--b3-theme-on-surface-light)
+      background-color: var(--b3-theme-background)
+      color: var(--b3-theme-on-surface)
       cursor: not-allowed
       
     &:focus:not(.locked)

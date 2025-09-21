@@ -46,3 +46,21 @@
     border-radius 5px
   .t
     padding 8pxp 6px
+
+/* 移动端提示文字位置调整 */
+@media (max-width: 768px) {
+  .rnd-doc-custom-tips {
+    padding: 16px 0 12px 0;  /* 增加上边距，让提示往下移 */
+    margin-top: 8px;  /* 增加顶部间距 */
+  }
+  
+  .rnd-doc-custom-tips .p {
+    padding: 14px 12px;  /* 增加内边距 */
+    margin: 0 8px;  /* 增加左右外边距 */
+  }
+  
+  .rnd-doc-custom-tips .t {
+    padding: 8px 6px;
+    line-height: 1.4;  /* 增加行高 */
+  }
+}

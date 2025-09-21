@@ -2226,6 +2226,7 @@ const initEditableContent = async () => {
                   reviewer={pr}
                   metrics={docMetrics}
                   {docPriority}
+                  forceExpanded={true}
                   on:priorityChange={handleMetricsPanelPriorityChange}
                 />
               </div>

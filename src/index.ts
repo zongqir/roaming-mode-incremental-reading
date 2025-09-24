@@ -76,6 +76,57 @@ export default class RandomDocPlugin extends Plugin {
   public pageObserver: MutationObserver | null = null
 
   /**
+   * 1.12 清理所有已存在的漫游实例
+   * 确保在创建新实例前清理旧实例，避免重复显示
+   */
+  private cleanupExistingInstances() {
+    try {
+      // 清理标签页内容实例
+      if (this.tabContentInstance) {
+        this.tabContentInstance.$destroy()
+        this.tabContentInstance = null
+        this.logger.info("已清理标签页内容实例")
+      }
+
+      // 清理全屏容器
+      if (this.fullscreenContainer) {
+        this.fullscreenContainer.remove()
+        this.fullscreenContainer = null
+        this.logger.info("已清理全屏容器")
+      }
+
+      // 清理消息容器
+      const messageContainer = document.getElementById("fullscreen-message-container")
+      if (messageContainer) {
+        messageContainer.remove()
+        this.logger.info("已清理消息容器")
+      }
+
+      // 清理可能存在的全屏容器
+      const existingFullscreenContainer = document.getElementById("fullscreen-random-doc")
+      if (existingFullscreenContainer) {
+        existingFullscreenContainer.remove()
+        this.logger.info("已清理已存在的全屏容器")
+      }
+
+      // 清理自定义消息函数
+      if (this.showFullscreenMessage) {
+        delete this.showFullscreenMessage
+        this.logger.info("已清理自定义消息函数")
+      }
+
+      // 清理标签页实例引用
+      if (this.tabInstance) {
+        delete this.tabInstance
+        this.logger.info("已清理标签页实例引用")
+      }
+
+    } catch (error) {
+      this.logger.error("清理已存在实例时出错:", error)
+    }
+  }
+
+  /**
    * 1.7 插件构造函数
    * 初始化插件基础设施
    * 

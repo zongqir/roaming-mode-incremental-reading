@@ -167,6 +167,9 @@ async function handleFloatingButtonClick(pluginInstance: RandomDocPlugin, button
  */
 async function startRoamingFromFloatingButton(pluginInstance: RandomDocPlugin) {
   try {
+    // 在创建新实例前，先清理所有已存在的实例
+    pluginInstance.cleanupExistingInstances()
+    
     // 导入topbar模块中的triggerRandomDoc函数
     const topbarModule = await import('./topbar')
     

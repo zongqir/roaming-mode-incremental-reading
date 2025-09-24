@@ -76,22 +76,10 @@ class RandomDocConfig {
   public notebookId: string
 
   /**
-   * 2.3 是否启用自定义SQL
-   * 控制是否使用自定义SQL查询来筛选文档
+   * 2.3 SQL筛选查询语句
+   * 当过滤模式为SQL时使用的自定义SQL查询语句
    */
-  public customSqlEnabled: boolean
-
-  /**
-   * 2.4 自定义SQL列表
-   * 存储用户定义的SQL查询列表（JSON字符串）
-   */
-  public sql: string
-
-  /**
-   * 2.5 当前选中的SQL
-   * 当前正在使用的SQL查询
-   */
-  public currentSql: string
+  public sqlQuery: string = ""
 
   /**
    * 2.6 复习模式

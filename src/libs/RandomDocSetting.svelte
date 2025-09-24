@@ -13,8 +13,6 @@
   export let dialog
 
   let storeConfig: RandomDocConfig
-  let customSqlEnabled = false
-  let sqlContent = JSON.stringify([])
   let reviewMode: any = "incremental"
   let excludeVisited = true
   let autoResetOnStartup = false
@@ -53,8 +51,6 @@
 
   const onSaveSetting = async () => {
     try {
-      storeConfig.customSqlEnabled = customSqlEnabled
-      storeConfig.sql = sqlContent
       storeConfig.reviewMode = reviewMode
       storeConfig.excludeVisited = excludeVisited
       storeConfig.autoResetOnStartup = autoResetOnStartup
@@ -388,44 +384,11 @@
 
   onMount(async () => {
     storeConfig = await pluginInstance.loadData(storeName)
-    customSqlEnabled = storeConfig?.customSqlEnabled ?? false
     reviewMode = storeConfig?.reviewMode ?? "incremental"
     excludeVisited = storeConfig?.excludeVisited !== false
     autoResetOnStartup = storeConfig?.autoResetOnStartup ?? false
     absolutePriorityProb = typeof storeConfig?.absolutePriorityProb === 'number' ? storeConfig.absolutePriorityProb : 0;
     defaultLocked = storeConfig?.defaultLocked ?? false;
-    sqlContent =
-      storeConfig?.sql ??
-      JSON.stringify([
-        {
-          name: "默认",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' ORDER BY random() LIMIT 1",
-        },
-        {
-          name: "今天",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' AND strftime('%Y-%m-%d', substr(b.created, 1, 4) || '-' || substr(b.created, 5, 2) || '-' || substr(b.created, 7, 2)) = date('now', 'start of day') ORDER BY random() LIMIT 1",
-        },
-        {
-          name: "3天内",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' AND strftime('%Y-%m-%d', substr(b.created, 1, 4) || '-' || substr(b.created, 5, 2) || '-' || substr(b.created, 7, 2)) >= date('now', '-3 days') ORDER BY random() LIMIT 1",
-        },
-        {
-          name: "7天内",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' AND strftime('%Y-%m-%d', substr(b.created, 1, 4) || '-' || substr(b.created, 5, 2) || '-' || substr(b.created, 7, 2)) >= date('now', '-7 days') ORDER BY random() LIMIT 1",
-        },
-        {
-          name: "一个月内",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' AND strftime('%Y-%m-%d', substr(b.created, 1, 4) || '-' || substr(b.created, 5, 2) || '-' || substr(b.created, 7, 2)) >= date('now', '-1 month') ORDER BY random() LIMIT 1",
-        },
-        {
-          name: "半年内",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' AND strftime('%Y-%m-%d', substr(b.created, 1, 4) || '-' || substr(b.created, 5, 2) || '-' || substr(b.created, 7, 2)) >= date('now', '-6 months') ORDER BY random() LIMIT 1",
-        },
-        {
-          name: "一年内",
-          sql: "SELECT DISTINCT b.root_id FROM blocks b WHERE TRIM(b.content)<>'' AND strftime('%Y-%m-%d', substr(b.created, 1, 4) || '-' || substr(b.created, 5, 2) || '-' || substr(b.created, 7, 2)) >= date('now', '-1 year') ORDER BY random() LIMIT 1",
-        },
-      ])
       
     // 如果当前是渐进模式，初始化渐进配置
     if (reviewMode === "incremental") {
@@ -502,36 +465,6 @@
               </label>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <h4 class="setting-title">是否启用自定义SQL</h4>
-              <label>
-                <input
-                  type="checkbox"
-                  bind:checked={customSqlEnabled}
-                  disabled={$isLocked}
-                />
-                启用后可自定义SQL筛选文档
-              </label>
-            </div>
-          </div>
-          {#if customSqlEnabled}
-            <div class="form-row">
-              <div class="form-group">
-                <label>自定义SQL内容</label>
-                <textarea
-                  class="b3-text-field fn__block sql-editor"
-                  id="regCode"
-                  bind:value={sqlContent}
-                  rows="4"
-                  placeholder={pluginInstance.i18n.sqlContentTip}
-                  disabled={$isLocked}
-                  readonly={$isLocked}
-                />
-                <p class="help-text">{pluginInstance.i18n.sqlContentTip}</p>
-              </div>
-            </div>
-          {/if}
         </div>
       </div>
     {/if}

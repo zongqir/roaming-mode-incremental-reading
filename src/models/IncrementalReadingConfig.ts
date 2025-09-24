@@ -27,6 +27,7 @@ export enum FilterMode {
   Notebook = "notebook",
   Root = "root",
   Tag = "tag",
+  SQL = "sql",
 }
 
 /**
@@ -39,19 +40,9 @@ class IncrementalReadingConfig {
   public notebookId: string
 
   /**
-   * 是否启用自定义 SQL
+   * SQL筛选查询语句
    */
-  public customSqlEnabled: boolean
-
-  /**
-   * 自定义 SQL
-   */
-  public sql: string
-
-  /**
-   * 当前 SQL
-   */
-  public currentSql: string
+  public sqlQuery: string = ""
 
   /**
    * 复习模式

@@ -73,6 +73,7 @@
   // SQL筛选相关变量
   let sqlQuery = ""
   let showSqlHelp = false
+  let showSqlDialog = false
   
   // 根文档选择器相关变量 - 混合输入模式
   let isDocsLoading = false
@@ -2006,6 +2007,15 @@ const initEditableContent = async () => {
           <option value={FilterMode.Tag}>标签</option>
           <option value={FilterMode.SQL}>SQL筛选</option>
         </select>
+        {#if filterMode === FilterMode.SQL && pluginInstance.isMobile}
+          <!-- 手机端：SQL设置按钮在筛选下拉框同一行 -->
+          <button 
+            class="action-item b3-button b3-button--outline btn-small sql-inline-btn"
+            on:click={() => showSqlDialog = true}
+          >
+            {sqlQuery ? 'SQL已设置' : '设置SQL'}
+          </button>
+        {/if}
         {#if filterMode === FilterMode.Notebook}
           <div class="notebook-selector">
             <button
@@ -2108,8 +2118,8 @@ const initEditableContent = async () => {
               <div class="tag-loading">加载中...</div>
             {/if}
           </div>
-        {:else if filterMode === FilterMode.SQL}
-          <!-- SQL筛选输入框 -->
+        {:else if filterMode === FilterMode.SQL && !pluginInstance.isMobile}
+          <!-- 桌面端：保持原有的SQL筛选输入框 -->
           <div class="sql-selector">
             <div class="sql-input-header">
               <span class="sql-label">SQL查询语句：</span>
@@ -2134,10 +2144,10 @@ const initEditableContent = async () => {
                   </div>
                   <div class="sql-example">
                     <div class="sql-example-header">
-                      <strong>2. 按创建时间筛选（今天）：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) = date('now', 'start of day')")} title="复制SQL语句">📋</button>
+                      <strong>2. 按内容关键词筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'")} title="复制SQL语句">📋</button>
                     </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) = date('now', 'start of day')</code>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'</code>
                   </div>
                   <div class="sql-example">
                     <div class="sql-example-header">
@@ -2146,83 +2156,11 @@ const initEditableContent = async () => {
                     </div>
                     <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')</code>
                   </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>4. 按内容关键词筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>5. 按多个关键词筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND (content LIKE '%项目%' OR content LIKE '%工作%')")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND (content LIKE '%项目%' OR content LIKE '%工作%')</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>6. 按笔记本筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND box = 'your-notebook-id-here'")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND box = 'your-notebook-id-here'</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>7. 按标签筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>8. 按多个标签筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT DISTINCT root_id as id FROM blocks WHERE tag IN ('#学习#', '#工作#', '#项目#') AND root_id IS NOT NULL")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT DISTINCT root_id as id FROM blocks WHERE tag IN ('#学习#', '#工作#', '#项目#') AND root_id IS NOT NULL</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>9. 按文档长度筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND length(content) > 100")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND length(content) > 100</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>10. 按更新时间筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(updated, 1, 4) || '-' || substr(updated, 5, 2) || '-' || substr(updated, 7, 2)) >= date('now', '-3 days')")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(updated, 1, 4) || '-' || substr(updated, 5, 2) || '-' || substr(updated, 7, 2)) >= date('now', '-3 days')</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>11. 复合条件查询：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>12. 随机筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL ORDER BY random() LIMIT 10")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL ORDER BY random() LIMIT 10</code>
-                  </div>
-                  <div class="sql-example">
-                    <div class="sql-example-header">
-                      <strong>13. 按文档标题筛选：</strong>
-                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '学习%'")} title="复制SQL语句">📋</button>
-                    </div>
-                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '学习%'</code>
-                  </div>
                 </div>
                 <div class="sql-help-tip">
                   <strong>💡 使用提示：</strong>
                   <ul>
                     <li>确保SQL返回的字段名是 <code>id</code>（文档ID）</li>
-                    <li>查询特定笔记本时，请将 <code>your-notebook-id-here</code> 替换为实际的笔记本ID</li>
-                    <li>标签查询需要使用完整的标签格式（如 <code>#标签名#</code>）</li>
                     <li>可以组合多个条件创建复杂的筛选逻辑</li>
                     <li>点击 📋 按钮可快速复制SQL语句到剪贴板</li>
                   </ul>
@@ -2233,12 +2171,7 @@ const initEditableContent = async () => {
               class="action-item b3-text-field sql-input"
               bind:value={sqlQuery}
               on:input={onSqlQueryChange}
-              placeholder="请输入SQL查询语句，例如：
-• SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'
-• SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')
-• SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL
-• SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL ORDER BY random() LIMIT 10
-点击 ? 按钮查看更多示例"
+              placeholder="请输入SQL查询语句"
               rows="4"
             />
             <button
@@ -2451,17 +2384,113 @@ const initEditableContent = async () => {
         </div>
       {/if}
 
-      <div class="rnd-doc-custom-tips">
-        <div
-          data-type="NodeParagraph"
-          class="p"
-          style="color: var(--b3-card-info-color);background-color: var(--b3-card-info-background);"
-        >
-          <div class="t" contenteditable="false" spellcheck="false">{tips}</div>
-          <div class="protyle-attr" contenteditable="false" />
+      <!-- SQL筛选弹窗（仅手机端） -->
+      {#if showSqlDialog && pluginInstance.isMobile}
+        <div class="visited-dialog-mask" on:click={() => showSqlDialog = false}></div>
+        <div class="sql-dialog">
+          <div class="visited-dialog-header">
+            <span>SQL查询设置</span>
+            <button class="close-btn" on:click={() => showSqlDialog = false}>×</button>
+          </div>
+          <div class="sql-dialog-content">
+            <div class="sql-input-header">
+              <span class="sql-label">SQL查询语句：</span>
+              <button
+                class="sql-help-btn"
+                on:click={() => showSqlHelp = !showSqlHelp}
+                title="查看SQL示例"
+              >
+                ?
+              </button>
+            </div>
+            {#if showSqlHelp}
+              <div class="sql-help-panel">
+                <h4>SQL筛选示例大全：</h4>
+                <div class="sql-examples">
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>1. 基础文档查询：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL AND content != ''")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL AND content != ''</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>2. 按内容关键词筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>3. 按创建时间筛选（最近7天）：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>4. 按标签筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL</code>
+                  </div>
+                </div>
+                <div class="sql-help-tip">
+                  <strong>💡 使用提示：</strong>
+                  <ul>
+                    <li>确保SQL返回的字段名是 <code>id</code>（文档ID）</li>
+                    <li>标签查询需要使用完整的标签格式（如 <code>#标签名#</code>）</li>
+                    <li>可以组合多个条件创建复杂的筛选逻辑</li>
+                    <li>点击 📋 按钮可快速复制SQL语句到剪贴板</li>
+                  </ul>
+                </div>
+              </div>
+            {/if}
+            <textarea
+              class="sql-dialog-input"
+              bind:value={sqlQuery}
+              on:input={onSqlQueryChange}
+              placeholder="请输入SQL查询语句，例如：
+SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
+              rows="6"
+            />
+            <div class="sql-dialog-actions">
+              <button
+                class="b3-button b3-button--outline"
+                on:click={() => showSqlDialog = false}
+              >
+                取消
+              </button>
+              <button
+                class="b3-button primary-btn"
+                on:click={async () => {
+                  await applySqlFilter()
+                  showSqlDialog = false
+                }}
+                disabled={!sqlQuery || sqlQuery.trim().length === 0}
+              >
+                应用并关闭
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="editable-area-container">
+      {/if}
+
+      <!-- 只有在非手机端SQL模式或者tips不包含SQL相关内容时才显示 -->
+      {#if !(pluginInstance.isMobile && filterMode === FilterMode.SQL && (tips.includes('输入查询条件后') || tips.includes('SQL筛选结果为空')))}
+        <div class="rnd-doc-custom-tips">
+          <div
+            data-type="NodeParagraph"
+            class="p"
+            style="color: var(--b3-card-info-color);background-color: var(--b3-card-info-background);"
+          >
+            <div class="t" contenteditable="false" spellcheck="false">{tips}</div>
+            <div class="protyle-attr" contenteditable="false" />
+          </div>
+        </div>
+      {/if}
+      <div class="editable-area-container {pluginInstance.isMobile && filterMode === FilterMode.SQL ? 'mobile-sql-spacing' : ''}">
         <div class="editable-header">
           <span class="editable-title">{pluginInstance.isMobile ? title : "编辑区域"}</span>
           <button class="lock-toggle-btn" on:click={toggleLock} title={$isLocked ? pluginInstance.i18n.unlockEditArea : pluginInstance.i18n.lockEditArea}>
@@ -3302,6 +3331,63 @@ const initEditableContent = async () => {
       margin 0
       font-size 14px
 
+  /* SQL弹窗样式（仅手机端） */
+  .sql-dialog
+    position fixed
+    top 50%
+    left 50%
+    transform translate(-50%, -50%)
+    width 90%
+    max-width 420px
+    max-height 80%
+    background var(--b3-theme-surface)
+    border 1px solid var(--b3-border-color)
+    border-radius 8px
+    box-shadow 0 4px 20px rgba(0, 0, 0, 0.15)
+    z-index 1001
+    overflow-y auto
+
+  .sql-dialog-content
+    padding 20px
+
+  .sql-dialog-input
+    width 100%
+    min-height 120px
+    max-height 200px
+    resize vertical
+    font-family monospace
+    font-size 13px
+    line-height 1.4
+    padding 12px
+    border 1px solid var(--b3-border-color)
+    border-radius 6px
+    background var(--b3-theme-background)
+    margin 10px 0
+    box-sizing border-box
+    
+    &::placeholder
+      color var(--b3-theme-on-surface-light)
+      font-size 12px
+      line-height 1.3
+      
+    &:focus
+      border-color var(--b3-theme-primary)
+      box-shadow 0 0 0 2px var(--b3-theme-primary-lighter)
+
+  .sql-dialog-actions
+    display flex
+    gap 10px
+    justify-content flex-end
+    margin-top 15px
+    
+    button
+      min-width 80px
+      padding 8px 16px
+
+  .sql-open-btn
+    width 100%
+    text-align center
+
   /* 优先级排序列表中的调整控件样式 */
   .priority-edit-group
     .priority-btn
@@ -3781,6 +3867,19 @@ const initEditableContent = async () => {
     .editable-area-container {
       margin-top: 4px;  /* 进一步减少上边距 */
       border-radius: 10px;  /* 更圆润的圆角 */
+    }
+  }
+
+  /* 手机端SQL筛选模式下的额外间距 */
+  @media (max-width: 768px) {
+    .editable-area-container.mobile-sql-spacing {
+      margin-top: 16px;  /* 增加上边距 */
+    }
+  }
+
+  @media (max-width: 480px) {
+    .editable-area-container.mobile-sql-spacing {
+      margin-top: 20px;  /* 超小屏幕下增加更多上边距 */
     }
   }
 

@@ -110,26 +110,150 @@ function createFloatingButton(pluginInstance: RandomDocPlugin): HTMLElement {
     button.style.boxShadow = '0 4px 20px rgba(102, 126, 234, 0.4)'
   })
   
-  // 点击事件
-  button.addEventListener('click', async () => {
-    await handleFloatingButtonClick(pluginInstance, button)
+  // 桌面端点击事件（移动端在touchend中处理）
+  button.addEventListener('click', async (e) => {
+    // 只在非移动端处理点击事件
+    if (!pluginInstance.isMobile) {
+      await handleFloatingButtonClick(pluginInstance, button)
+    }
   })
   
-  // 长按显示菜单（手机端）
+  // 触摸拖拽和长按功能（手机端）
   let pressTimer: NodeJS.Timeout | null = null
+  let isDragging = false
+  let startX = 0
+  let startY = 0
+  let initialX = 0
+  let initialY = 0
+  let hasMoved = false
   
   button.addEventListener('touchstart', (e) => {
+    e.preventDefault()
+    
+    const touch = e.touches[0]
+    startX = touch.clientX
+    startY = touch.clientY
+    
+    // 获取按钮当前位置
+    const rect = button.getBoundingClientRect()
+    initialX = rect.left
+    initialY = rect.top
+    
+    isDragging = false
+    hasMoved = false
+    
+    // 长按定时器
     pressTimer = setTimeout(() => {
-      showQuickMenu(pluginInstance, button)
+      if (!hasMoved) {
+        showQuickMenu(pluginInstance, button)
+      }
     }, 800)
   })
   
-  button.addEventListener('touchend', () => {
+  button.addEventListener('touchmove', (e) => {
+    e.preventDefault()
+    
     if (pressTimer) {
       clearTimeout(pressTimer)
       pressTimer = null
     }
+    
+    const touch = e.touches[0]
+    const deltaX = touch.clientX - startX
+    const deltaY = touch.clientY - startY
+    
+    // 如果移动距离超过阈值，开始拖拽
+    if (!isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+      isDragging = true
+      button.style.transition = 'none' // 拖拽时禁用过渡动画
+    }
+    
+    if (isDragging) {
+      hasMoved = true
+      const newX = initialX + deltaX
+      const newY = initialY + deltaY
+      
+      // 限制在屏幕范围内
+      const maxX = window.innerWidth - 60
+      const maxY = window.innerHeight - 60
+      const constrainedX = Math.max(20, Math.min(maxX, newX))
+      const constrainedY = Math.max(20, Math.min(maxY, newY))
+      
+      button.style.left = constrainedX + 'px'
+      button.style.top = constrainedY + 'px'
+      button.style.right = 'auto'
+      button.style.bottom = 'auto'
+    }
   })
+  
+  button.addEventListener('touchend', (e) => {
+    e.preventDefault()
+    
+    if (pressTimer) {
+      clearTimeout(pressTimer)
+      pressTimer = null
+    }
+    
+    // 恢复过渡动画
+    button.style.transition = 'all 0.3s ease'
+    
+    // 如果没有拖拽且没有移动，触发点击
+    if (!isDragging && !hasMoved) {
+      handleFloatingButtonClick(pluginInstance, button)
+    }
+    
+    // 拖拽结束后吸附到边缘
+    if (isDragging) {
+      const rect = button.getBoundingClientRect()
+      const centerX = rect.left + rect.width / 2
+      const screenWidth = window.innerWidth
+      
+      // 吸附到左边或右边
+      if (centerX < screenWidth / 2) {
+        button.style.left = '20px'
+      } else {
+        button.style.left = 'auto'
+        button.style.right = '20px'
+      }
+      
+      // 保存位置到localStorage
+      const position = {
+        left: button.style.left,
+        right: button.style.right,
+        top: button.style.top,
+        bottom: button.style.bottom
+      }
+      localStorage.setItem('floating-button-position', JSON.stringify(position))
+    }
+    
+    isDragging = false
+    hasMoved = false
+  })
+  
+  // 恢复上次保存的位置
+  try {
+    const savedPosition = localStorage.getItem('floating-button-position')
+    if (savedPosition) {
+      const position = JSON.parse(savedPosition)
+      if (position.left && position.left !== 'auto') {
+        button.style.left = position.left
+        button.style.right = 'auto'
+      } else if (position.right && position.right !== 'auto') {
+        button.style.right = position.right
+        button.style.left = 'auto'
+      }
+      
+      if (position.top && position.top !== 'auto') {
+        button.style.top = position.top
+        button.style.bottom = 'auto'
+      } else if (position.bottom && position.bottom !== 'auto') {
+        button.style.bottom = position.bottom
+        button.style.top = 'auto'
+      }
+    }
+  } catch (error) {
+    pluginInstance.logger.warn('恢复浮动按钮位置失败:', error)
+  }
   
   return button
 }

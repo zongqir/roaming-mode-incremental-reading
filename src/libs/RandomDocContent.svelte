@@ -1066,6 +1066,12 @@
   async function refreshPriorityBarPoints() {
     if (!pr) return;
     
+    // 如果正在刷新中，避免重复调用
+    if (isRefreshingPriority) {
+      console.warn("refreshPriorityBarPoints: 正在刷新中，跳过重复调用");
+      return;
+    }
+    
     // 保存当前文档的优先级（如果存在），以便在刷新后能够恢复
     currentDocPriority = priorityBarPoints.find(p => p.id === currentRndId)?.priority;
     
@@ -1213,8 +1219,17 @@
     }
   }
 
+  // 防止无限循环的标志位
+  let isRefreshingPriority = false;
+
   // 监听 MetricsPanel 的优先级变化事件
   async function handleMetricsPanelPriorityChange(e) {
+    // 防止无限循环调用
+    if (isRefreshingPriority) {
+      console.warn("正在刷新优先级数据，跳过重复调用");
+      return;
+    }
+    
     // 获取当前优先级
     const newPriority = e.detail.priority;
     
@@ -1226,8 +1241,18 @@
       priorityBarPoints = [...priorityBarPoints];
     }
     
-    // 全量刷新点图数据（异步操作，确保数据完整性）
-    await refreshPriorityBarPoints();
+    // 设置标志位，防止递归调用
+    isRefreshingPriority = true;
+    
+    try {
+      // 全量刷新点图数据（异步操作，确保数据完整性）
+      await refreshPriorityBarPoints();
+    } catch (error) {
+      console.error("刷新优先级数据时出错:", error);
+    } finally {
+      // 无论成功还是失败，都要重置标志位
+      isRefreshingPriority = false;
+    }
   }
 
   // events

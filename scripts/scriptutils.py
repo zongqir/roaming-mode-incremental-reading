@@ -20,7 +20,6 @@
 #  Please contact ebAobS, ebAobS@outlook.com
 #  if you need additional information or have any questions.
 
-import distutils
 import glob
 import json
 import os
@@ -29,8 +28,6 @@ import shutil
 import sys
 import time
 import zipfile
-from distutils import dir_util
-from distutils import file_util
 
 
 def get_workdir():
@@ -67,7 +64,7 @@ def cp_file(f, t):
     :param f: 源路径
     :param t: 目的地
     """
-    distutils.file_util.copy_file(f, t)
+    shutil.copy2(f, t)
 
 
 def rm_file(filename):
@@ -88,7 +85,7 @@ def mv_file(src, dst):
     if os.path.exists(dst):
         rm_file(dst)
     if os.path.exists(src):
-        file_util.move_file(src, dst)
+        shutil.move(src, dst)
 
 
 def rm_files(regex):
@@ -131,7 +128,7 @@ def mkdir(dirname):
     :param dirname: 目录
     """
     if not os.path.exists(dirname):
-        distutils.dir_util.mkpath(dirname)
+        os.makedirs(dirname, exist_ok=True)
 
 
 def rm_folder(folder):

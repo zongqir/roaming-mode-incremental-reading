@@ -131,7 +131,7 @@ class IncrementalReviewer {
       this.pluginInstance.logger.info("开始获取随机文档...")
       
       // 3.1.1 获取最新过滤条件
-      const filterCondition = this.buildFilterCondition()
+      const filterCondition = await this.buildFilterCondition()
       this.pluginInstance.logger.info(`构建的过滤条件: ${filterCondition}`)
       
       let excludeVisited = ""
@@ -319,7 +319,7 @@ class IncrementalReviewer {
   public async getTotalDocCount(config?: RandomDocConfig): Promise<number> {
     try {
       // 3.2.1 使用传入的配置或当前最新配置
-      const filterCondition = this.buildFilterCondition(config || this.storeConfig)
+      const filterCondition = await this.buildFilterCondition(config || this.storeConfig)
       
       // 3.2.2 构造计数SQL查询
       const sql = `
@@ -350,7 +350,7 @@ class IncrementalReviewer {
   public async getPriorityList(): Promise<Array<{id: string; title?: string; priority: number}>> {
     try {
       // 获取最新过滤条件
-      const filterCondition = this.buildFilterCondition()
+      const filterCondition = await this.buildFilterCondition()
       
       // 获取符合条件的文档总数
       const totalCount = await this.getTotalDocCount()
@@ -1336,7 +1336,7 @@ class IncrementalReviewer {
    */
   public async getVisitedCount(): Promise<number> {
     try {
-      const filterCondition = this.buildFilterCondition()
+      const filterCondition = await this.buildFilterCondition()
       
       // 6.3.1 构建SQL查询已访问文档
       const sql = `
@@ -1369,7 +1369,7 @@ class IncrementalReviewer {
    */
   public async getVisitedDocs(): Promise<Array<{id: string, content: string}>> {
     try {
-      const filterCondition = this.buildFilterCondition()
+      const filterCondition = await this.buildFilterCondition()
       const sql = `
         SELECT id, content FROM blocks 
         WHERE type = 'd' 
@@ -1459,7 +1459,7 @@ class IncrementalReviewer {
    * @param config 可选的配置对象
    * @returns 构建的SQL过滤条件
    */
-  public buildFilterCondition(config?: RandomDocConfig): string {
+  public async buildFilterCondition(config?: RandomDocConfig): Promise<string> {
     // 7.1.1 使用传入的配置或当前实例的最新配置
     const targetConfig = config || this.storeConfig
     
@@ -1548,6 +1548,50 @@ class IncrementalReviewer {
         console.log("❌ 标签模式但无有效标签内容")
         console.log("📋 tags:", tags)
         this.pluginInstance.logger.info(`标签模式但无标签内容，显示所有文档`)
+      }
+    } else if (filterMode === FilterMode.SQL) {
+      console.log("🔍 进入SQL筛选过滤模式")
+      const sqlQuery = targetConfig.sqlQuery || ""
+      console.log("📋 SQL查询语句:", sqlQuery)
+      
+      // SQL模式 - 仅当有SQL查询语句时应用过滤
+      if (sqlQuery && sqlQuery.trim().length > 0) {
+        console.log("✅ SQL查询语句非空，开始处理")
+        // 执行SQL查询获取文档ID列表
+        try {
+          const sqlResult = await this.pluginInstance.kernelApi.sql(sqlQuery.trim())
+          if (sqlResult.code === 0 && sqlResult.data && Array.isArray(sqlResult.data) && sqlResult.data.length > 0) {
+            // 提取所有的文档ID
+            const docIds = sqlResult.data.map(row => {
+              // 取第一个字段的值作为文档ID
+              const firstKey = Object.keys(row)[0]
+              return row[firstKey]
+            }).filter(id => id && typeof id === 'string')
+            
+            if (docIds.length > 0) {
+              console.log(`🎯 SQL查询返回 ${docIds.length} 个文档ID:`, docIds.slice(0, 5))
+              // 构建IN条件，限制在这些文档ID范围内
+              const quotedIds = docIds.map(id => `'${id}'`).join(',')
+              condition = `AND id IN (${quotedIds})`
+              console.log("🏗️ 最终SQL筛选条件:", condition)
+              this.pluginInstance.logger.info(`应用SQL筛选，查询返回 ${docIds.length} 个文档`)
+            } else {
+              console.log("⚠️ SQL查询结果中没有有效的文档ID")
+              this.pluginInstance.logger.info(`SQL查询结果中没有有效的文档ID，显示所有文档`)
+            }
+          } else {
+            console.log("⚠️ SQL查询没有返回数据")
+            this.pluginInstance.logger.info(`SQL查询没有返回数据，显示所有文档`)
+          }
+        } catch (error) {
+          console.error("❌ SQL查询执行失败:", error)
+          this.pluginInstance.logger.error(`SQL查询执行失败: ${error.message}`)
+          // SQL查询失败时抛出错误，让上层处理
+          throw new Error(`SQL查询执行失败: ${error.message}`)
+        }
+      } else {
+        console.log("❌ SQL模式但无SQL查询语句")
+        this.pluginInstance.logger.info(`SQL模式但无SQL查询语句，显示所有文档`)
       }
     }
     

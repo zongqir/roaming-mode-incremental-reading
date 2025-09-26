@@ -130,6 +130,9 @@ export const showSettingMenu = (pluginInstance: RandomDocPlugin) => {
  */
 const openFullscreenMode = async (pluginInstance: RandomDocPlugin) => {
   try {
+    // 3.0.0 在创建新实例前，先清理所有已存在的实例
+    pluginInstance.cleanupExistingInstances()
+    
     // 3.0.1 创建最大化容器
     const fullscreenId = "fullscreen-random-doc"
     const fullscreenContainer = document.createElement('div')
@@ -352,6 +355,9 @@ const closeFullscreenMode = (pluginInstance: RandomDocPlugin) => {
  */
 const triggerRandomDoc = async (pluginInstance: RandomDocPlugin) => {
   try {
+    // 3.0 在创建新实例前，先清理所有已存在的实例
+    pluginInstance.cleanupExistingInstances()
+    
     // 3.1 移动端使用最大化窗口模式，桌面端使用标签页模式
     if (pluginInstance.isMobile) {
       // 移动端：使用最大化窗口模式替代对话框

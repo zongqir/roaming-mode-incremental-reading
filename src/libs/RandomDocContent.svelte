@@ -70,6 +70,10 @@
   let isTagsLoading = false
   let showTagDropdown = false
   
+  // SQL筛选相关变量
+  let sqlQuery = ""
+  let showSqlHelp = false
+  
   // 根文档选择器相关变量 - 混合输入模式
   let isDocsLoading = false
   let showDocSelector = false
@@ -90,8 +94,6 @@
   let content = ""
   let toNotebookId = "" // 当前选中的笔记本ID
 
-  let sqlList: any[] = []
-  let currentSql = ""
   let pr: IncrementalReviewer
   
   // 渐进模式相关
@@ -383,49 +385,6 @@
     docMetrics = []
 
     try {
-      // 检查是否启用了自定义SQL模式
-      if (storeConfig?.customSqlEnabled && storeConfig?.currentSql) {
-        // 使用自定义SQL模式
-        const docId = await handleCustomSqlMode()
-        if (docId) {
-          currentRndId = docId
-          
-          // 获取文档块信息
-          const blockResult = await pluginInstance.kernelApi.getBlockByID(currentRndId)
-          if (!blockResult) {
-            content = "获取文档块信息失败"
-            tips = "或许文档已被删除，请尝试使用其他过滤条件。"
-            currentRndId = undefined
-            isLoading = false
-            return
-          }
-          
-          // 设置标题
-          title = blockResult.content || "无标题"
-          
-          // 获取文档详细内容
-          const docResult = await pluginInstance.kernelApi.getDoc(currentRndId)
-          
-          if (!docResult || docResult.code !== 0) {
-            content = "获取文档详情失败"
-            tips = "或许文档已被删除，请尝试使用其他过滤条件。"
-            isLoading = false
-            return
-          }
-          
-          // 设置内容
-          const doc = docResult.data as any
-          content = doc.content || ""
-          
-          // 初始化可编辑内容
-          await initEditableContent()
-          
-          setTips(`展卷乃无言的情意：通过自定义SQL查询邂逅此文，穿越星辰遇见你，三秋霜雪印马蹄。`)
-          
-          isLoading = false
-          return
-        }
-      }
       // 检查渐进复习器是否已初始化
       if (!pr) {
         pr = new IncrementalReviewer(storeConfig, pluginInstance)
@@ -433,10 +392,24 @@
       }
       
       // 获取文档总数
-      const total = await pr.getTotalDocCount(storeConfig)
+      let total
+      try {
+        total = await pr.getTotalDocCount(storeConfig)
+      } catch (error) {
+        pluginInstance.logger.error("获取文档总数失败:", error)
+        content = "SQL筛选执行失败"
+        tips = "请检查SQL语句语法或网络连接后重试"
+        isLoading = false
+        return
+      }
+      
       if (total === 0) {
         content = "没有找到符合条件的文档"
-        tips = "知识的海洋等待你去填充，请先创建并填充一些文档。"
+        if (storeConfig.filterMode === FilterMode.SQL) {
+          tips = "SQL筛选结果为空，请调整查询条件后重新应用筛选"
+        } else {
+          tips = "知识的海洋等待你去填充，请先创建并填充一些文档。"
+        }
         isLoading = false
         return
       }
@@ -806,7 +779,7 @@
 
   // 一遍过模式获取文档
   const getOnceModeDoc = async () => {
-    const filterCondition = pr.buildFilterCondition(storeConfig)
+    const filterCondition = await pr.buildFilterCondition(storeConfig)
     // 先获取符合条件的总记录数
     const countSql = `
         SELECT COUNT(id) as total 
@@ -862,25 +835,6 @@
     }
   }
 
-  // 处理自定义 SQL 模式
-  const handleCustomSqlMode = async () => {
-    const currentSql = storeConfig.currentSql
-    const result = await pluginInstance.kernelApi.sql(currentSql)
-    if (result.code !== 0) {
-      smartShowMessage(pluginInstance.i18n.docFetchError, 7000, "error")
-      throw new Error(result.msg)
-    }
-
-    const data = result.data as any[]
-    if (!data || data.length === 0) {
-      throw new Error(new Date().toISOString() + "：" + "没有找到符合条件的文档")
-    }
-    const firstKey = Object.keys(data[0])[0]
-    const docId = data[0][firstKey]
-
-    pluginInstance.logger.info(`自定义SQL获取文档: ${docId}`)
-    return docId
-  }
 
   // 获取文档总数
   const getTotalDocCount = async () => {
@@ -967,7 +921,7 @@
         return
       }
       // 复用pr内部分页SQL逻辑，手动获取所有文档ID
-      const filterCondition = pr.buildFilterCondition(storeConfig)
+      const filterCondition = await pr.buildFilterCondition(storeConfig)
       const pageSize = 50
       let allDocs: Array<{id: string}> = []
       for (let offset = 0; offset < total; offset += pageSize) {
@@ -1283,14 +1237,6 @@
     pluginInstance.logger.info("storeConfig saved notebookIds =>", selectedNotebooks)
   }
 
-  const onSqlChange = async function () {
-    // 显示当前选择的名称
-    storeConfig.currentSql = currentSql
-    await pluginInstance.saveData(storeName, storeConfig)
-    // 重置文档
-    clearDoc()
-    pluginInstance.logger.info("storeConfig saved currentSql =>", storeConfig)
-  }
 
   const onFilterModeChange = async function () {
     // 模式切换
@@ -1676,6 +1622,89 @@
     onTagsChange()
   }
 
+  // SQL筛选相关函数
+  const onSqlQueryChange = function () {
+    // SQL查询输入变化时的处理
+    // 这里可以添加实时验证或其他逻辑
+  }
+
+  const applySqlFilter = async function () {
+    try {
+      // 先测试SQL查询是否有效
+      const testResult = await pluginInstance.kernelApi.sql(sqlQuery.trim())
+      
+      if (testResult.code !== 0) {
+        // SQL语法错误
+        smartShowMessage("SQL语法错误: " + testResult.msg, 7000, "error")
+        return
+      }
+      
+      if (!testResult.data || !Array.isArray(testResult.data) || testResult.data.length === 0) {
+        // SQL查询结果为空
+        smartShowMessage("筛选文档为空，请检查SQL查询条件", 5000, "warning")
+        // 清空当前文档显示
+        clearDoc()
+        content = "没有找到符合条件的文档"
+        tips = "SQL筛选结果为空，请调整查询条件后重新应用筛选"
+        return
+      }
+      
+      // SQL查询有效且有结果，保存配置
+      storeConfig.sqlQuery = sqlQuery.trim()
+      await pluginInstance.saveData(storeName, storeConfig)
+      
+      // 重置文档
+      clearDoc()
+      
+      // 如果当前是渐进模式，需要重新初始化reviewer以更新SQL筛选条件
+      if (storeConfig.reviewMode === "incremental") {
+        console.log("🔄 SQL变更后重新初始化渐进模式...")
+        pluginInstance.logger.info("SQL变更后重新初始化渐进模式...")
+        pr = new IncrementalReviewer(storeConfig, pluginInstance)
+        await pr.initIncrementalConfig()
+        
+        // 自动开始新的漫游，避免用户手动点击
+        await doIncrementalRandomDoc()
+      }
+      
+      pluginInstance.logger.info("storeConfig saved sqlQuery =>", storeConfig.sqlQuery)
+      smartShowMessage(`SQL筛选应用成功，找到 ${testResult.data.length} 个文档`, 3000, "info")
+    } catch (error) {
+      pluginInstance.logger.error("应用SQL筛选失败:", error)
+      smartShowMessage("SQL筛选失败: " + error.message, 7000, "error")
+      // 清空当前文档显示
+      clearDoc()
+      content = "SQL筛选执行失败"
+      tips = "请检查SQL语句语法或网络连接后重试"
+    }
+  }
+
+  // 复制SQL语句到剪贴板
+  const copySqlToClipboard = async function (sqlText) {
+    try {
+      await navigator.clipboard.writeText(sqlText)
+      smartShowMessage("SQL语句已复制到剪贴板", 2000, "info")
+    } catch (error) {
+      // 如果现代API失败，使用传统方法
+      try {
+        const textArea = document.createElement('textarea')
+        textArea.value = sqlText
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+        smartShowMessage("SQL语句已复制到剪贴板", 2000, "info")
+      } catch (fallbackError) {
+        pluginInstance.logger.error("复制到剪贴板失败:", fallbackError)
+        smartShowMessage("复制失败，请手动复制", 3000, "error")
+      }
+    }
+  }
+
   // 导出函数，让外部可以调用
   export const resetAndRefresh = async () => {
     try {
@@ -1889,17 +1918,10 @@ const initEditableContent = async () => {
     filterMode = storeConfig.filterMode
     rootId = storeConfig?.rootId ?? ""
     selectedDocTitle = storeConfig?.rootDocTitle ?? ""
+    
+    // 恢复SQL查询配置
+    sqlQuery = storeConfig?.sqlQuery ?? ""
 
-    // 处理自定义 sql
-    if (storeConfig?.customSqlEnabled) {
-      sqlList = JSON.parse(storeConfig?.sql ?? "[]")
-      if (sqlList.length == 0) {
-        smartShowMessage(pluginInstance.i18n.customSqlEmpty, 7000, "error")
-        return
-      }
-      currentSql = storeConfig?.currentSql ?? sqlList[0].sql
-      storeConfig.currentSql = currentSql
-    }
 
     // 初始化渐进模式
     if (storeConfig.reviewMode === "incremental") {
@@ -1909,7 +1931,7 @@ const initEditableContent = async () => {
       if (storeConfig?.autoResetOnStartup) {
         try {
           pluginInstance.logger.info("检测到启动时自动重置设置，开始重置已访问文档记录...")
-          const filterCondition = pr.buildFilterCondition(storeConfig)
+          const filterCondition = await pr.buildFilterCondition(storeConfig)
           await pr.resetVisited(filterCondition)
           smartShowMessage("启动时自动重置已访问文档记录完成", 3000)
         } catch (error) {
@@ -1959,6 +1981,7 @@ const initEditableContent = async () => {
           <option value={FilterMode.Notebook}>笔记本</option>
           <option value={FilterMode.Root}>根文档</option>
           <option value={FilterMode.Tag}>标签</option>
+          <option value={FilterMode.SQL}>SQL筛选</option>
         </select>
         {#if filterMode === FilterMode.Notebook}
           <div class="notebook-selector">
@@ -2060,24 +2083,149 @@ const initEditableContent = async () => {
               <div class="tag-loading">加载中...</div>
             {/if}
           </div>
-        {/if}
-        {#if storeConfig?.customSqlEnabled}
-          <select
-            class="action-item b3-select fn__flex-center fn__size180 notebook-select"
-            bind:value={currentSql}
-            on:change={onSqlChange}
-          >
-            {#if sqlList && sqlList.length > 0}
-              {#each sqlList as s (s.sql)}
-                <option value={s.sql}>{s.name}</option>
-              {/each}
-            {:else}
-              <option value="">{pluginInstance.i18n.loading}...</option>
+        {:else if filterMode === FilterMode.SQL}
+          <!-- SQL筛选输入框 -->
+          <div class="sql-selector">
+            <div class="sql-input-header">
+              <span class="sql-label">SQL查询语句：</span>
+              <button
+                class="sql-help-btn"
+                on:click={() => showSqlHelp = !showSqlHelp}
+                title="查看SQL示例"
+              >
+                ?
+              </button>
+            </div>
+            {#if showSqlHelp}
+              <div class="sql-help-panel">
+                <h4>SQL筛选示例大全：</h4>
+                <div class="sql-examples">
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>1. 基础文档查询：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL AND content != ''")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL AND content != ''</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>2. 按创建时间筛选（今天）：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) = date('now', 'start of day')")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) = date('now', 'start of day')</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>3. 按创建时间筛选（最近7天）：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>4. 按内容关键词筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>5. 按多个关键词筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND (content LIKE '%项目%' OR content LIKE '%工作%')")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND (content LIKE '%项目%' OR content LIKE '%工作%')</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>6. 按笔记本筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND box = 'your-notebook-id-here'")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND box = 'your-notebook-id-here'</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>7. 按标签筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>8. 按多个标签筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT DISTINCT root_id as id FROM blocks WHERE tag IN ('#学习#', '#工作#', '#项目#') AND root_id IS NOT NULL")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT DISTINCT root_id as id FROM blocks WHERE tag IN ('#学习#', '#工作#', '#项目#') AND root_id IS NOT NULL</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>9. 按文档长度筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND length(content) > 100")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND length(content) > 100</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>10. 按更新时间筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(updated, 1, 4) || '-' || substr(updated, 5, 2) || '-' || substr(updated, 7, 2)) >= date('now', '-3 days')")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(updated, 1, 4) || '-' || substr(updated, 5, 2) || '-' || substr(updated, 7, 2)) >= date('now', '-3 days')</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>11. 复合条件查询：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>12. 随机筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL ORDER BY random() LIMIT 10")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL ORDER BY random() LIMIT 10</code>
+                  </div>
+                  <div class="sql-example">
+                    <div class="sql-example-header">
+                      <strong>13. 按文档标题筛选：</strong>
+                      <button class="copy-btn" on:click={() => copySqlToClipboard("SELECT id FROM blocks WHERE type = 'd' AND content LIKE '学习%'")} title="复制SQL语句">📋</button>
+                    </div>
+                    <code>SELECT id FROM blocks WHERE type = 'd' AND content LIKE '学习%'</code>
+                  </div>
+                </div>
+                <div class="sql-help-tip">
+                  <strong>💡 使用提示：</strong>
+                  <ul>
+                    <li>确保SQL返回的字段名是 <code>id</code>（文档ID）</li>
+                    <li>查询特定笔记本时，请将 <code>your-notebook-id-here</code> 替换为实际的笔记本ID</li>
+                    <li>标签查询需要使用完整的标签格式（如 <code>#标签名#</code>）</li>
+                    <li>可以组合多个条件创建复杂的筛选逻辑</li>
+                    <li>点击 📋 按钮可快速复制SQL语句到剪贴板</li>
+                  </ul>
+                </div>
+              </div>
             {/if}
-          </select>
-          <span class="custom-sql">当前使用自定义 SQL 漫游</span>
-        {:else}
-          <button class="action-item b3-button primary-btn btn-small" on:click={doIncrementalRandomDoc}>
+            <textarea
+              class="action-item b3-text-field sql-input"
+              bind:value={sqlQuery}
+              on:input={onSqlQueryChange}
+              placeholder="请输入SQL查询语句，例如：
+• SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'
+• SELECT id FROM blocks WHERE type = 'd' AND strftime('%Y-%m-%d', substr(created, 1, 4) || '-' || substr(created, 5, 2) || '-' || substr(created, 7, 2)) >= date('now', '-7 days')
+• SELECT DISTINCT root_id as id FROM blocks WHERE tag = '#重要#' AND root_id IS NOT NULL
+• SELECT id FROM blocks WHERE type = 'd' AND content IS NOT NULL ORDER BY random() LIMIT 10
+点击 ? 按钮查看更多示例"
+              rows="4"
+            />
+            <button
+              class="action-item b3-button b3-button--outline btn-small"
+              on:click={applySqlFilter}
+              disabled={!sqlQuery || sqlQuery.trim().length === 0}
+            >
+              应用筛选
+            </button>
+          </div>
+        {/if}
+        <button class="action-item b3-button primary-btn btn-small" on:click={doIncrementalRandomDoc}>
             {#if isLoading}
               <span class="button-loading-icon"></span> 漫游中...
             {:else}
@@ -2107,7 +2255,6 @@ const initEditableContent = async () => {
           >
             {@html icons.iconSetting}
           </button>
-        {/if}
       </div>
 
       <!-- 已访问文档弹窗 -->
@@ -3413,6 +3560,169 @@ const initEditableContent = async () => {
     text-align: center
     color: var(--b3-theme-on-surface-light)
     font-size: 13px
+
+  // SQL筛选器样式
+  .sql-selector
+    display: flex
+    flex-direction: column
+    gap: 8px
+    width: 100%
+    
+  .sql-input-header
+    display: flex
+    align-items: center
+    gap: 8px
+    
+  .sql-label
+    font-size: 13px
+    font-weight: 500
+    color: var(--b3-theme-on-surface)
+    
+  .sql-help-btn
+    background: var(--b3-theme-primary)
+    color: white
+    border: none
+    border-radius: 50%
+    width: 20px
+    height: 20px
+    font-size: 12px
+    cursor: pointer
+    display: flex
+    align-items: center
+    justify-content: center
+    
+    &:hover
+      background: var(--b3-theme-primary-dark)
+      
+  .sql-help-panel
+    background: var(--b3-theme-surface)
+    border: 1px solid var(--b3-border-color)
+    border-radius: 6px
+    padding: 12px
+    margin-bottom: 8px
+    max-height: 400px
+    overflow-y: auto
+    
+    h4
+      margin: 0 0 12px 0
+      font-size: 14px
+      color: var(--b3-theme-on-surface)
+      border-bottom: 1px solid var(--b3-border-color)
+      padding-bottom: 8px
+      
+  .sql-examples
+    display: flex
+    flex-direction: column
+    gap: 10px
+    margin-bottom: 12px
+    
+  .sql-example
+    display: flex
+    flex-direction: column
+    gap: 4px
+    padding: 8px
+    background: var(--b3-theme-background)
+    border-radius: 4px
+    border-left: 3px solid var(--b3-theme-primary)
+    
+  .sql-example-header
+    display: flex
+    justify-content: space-between
+    align-items: center
+    margin-bottom: 4px
+    
+    strong
+      font-size: 12px
+      color: var(--b3-theme-on-surface)
+      flex: 1
+      
+  .copy-btn
+    background: var(--b3-theme-primary)
+    color: white
+    border: none
+    border-radius: 4px
+    padding: 4px 8px
+    font-size: 12px
+    cursor: pointer
+    transition: all 0.2s ease
+    min-width: 32px
+    height: 24px
+    display: flex
+    align-items: center
+    justify-content: center
+    
+    &:hover
+      background: var(--b3-theme-primary-dark)
+      transform: scale(1.05)
+      
+    &:active
+      transform: scale(0.95)
+      
+  .sql-example code
+    background: var(--b3-theme-surface)
+    border: 1px solid var(--b3-border-color)
+    border-radius: 4px
+    padding: 6px 8px
+    font-family: monospace
+    font-size: 10px
+    color: var(--b3-theme-on-surface)
+    word-break: break-all
+    line-height: 1.3
+    white-space: pre-wrap
+    cursor: text
+    user-select: text
+      
+  .sql-help-tip
+    background: var(--b3-theme-primary-lighter)
+    border: 1px solid var(--b3-theme-primary)
+    border-radius: 4px
+    padding: 10px
+    margin-top: 8px
+    
+    strong
+      font-size: 12px
+      color: var(--b3-theme-on-surface)
+      display: block
+      margin-bottom: 6px
+      
+    ul
+      margin: 0
+      padding-left: 16px
+      
+    li
+      font-size: 11px
+      color: var(--b3-theme-on-surface)
+      margin-bottom: 4px
+      line-height: 1.4
+      
+      code
+        background: var(--b3-theme-background)
+        border: 1px solid var(--b3-border-color)
+        border-radius: 2px
+        padding: 2px 4px
+        font-family: monospace
+        font-size: 10px
+      
+  .sql-input
+    min-height: 80px
+    resize: vertical
+    font-family: monospace
+    font-size: 12px
+    line-height: 1.3
+    padding: 8px 12px
+    
+    &::placeholder
+      color: var(--b3-theme-on-surface-light)
+      white-space: pre-line
+      font-size: 11px
+      line-height: 1.2
+      
+    &:focus
+      border-color: var(--b3-theme-primary)
+      box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter)
+      
+    &:focus::placeholder
+      opacity: 0.6
 
   // 编辑区域样式
   .editable-area-container

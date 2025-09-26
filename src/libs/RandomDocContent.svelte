@@ -373,6 +373,15 @@
   export const doIncrementalRandomDoc = async () => {
     // 每次漫游前强制刷新配置，确保概率配置为最新
     storeConfig = await pluginInstance.safeLoad(storeName)
+    
+    // 🎯 关键修复：SQL筛选模式下如果没有SQL查询语句，不执行漫游
+    if (storeConfig.filterMode === FilterMode.SQL && (!storeConfig.sqlQuery || storeConfig.sqlQuery.trim() === '')) {
+      content = "请输入SQL查询语句"
+      tips = "输入查询条件后，点击「应用筛选」按钮开始漫游"
+      isLoading = false
+      return
+    }
+    
     isLoading = true
     title = "漫游中..."
     content = ""
@@ -1261,8 +1270,15 @@
       pr = new IncrementalReviewer(storeConfig, pluginInstance)
       await pr.initIncrementalConfig()
       
-      // 自动开始新的漫游，避免用户手动点击
-      await doIncrementalRandomDoc()
+      // 🎯 关键修复：SQL筛选模式不自动开始漫游，需要用户手动点击"应用筛选"
+      if (filterMode !== FilterMode.SQL) {
+        // 自动开始新的漫游，避免用户手动点击
+        await doIncrementalRandomDoc()
+      } else {
+        // SQL筛选模式：显示提示信息，等待用户点击应用筛选
+        content = "请输入SQL查询语句"
+        tips = "输入查询条件后，点击「应用筛选」按钮开始漫游"
+      }
     }
     
     pluginInstance.logger.info("storeConfig saved filterMode =>", storeConfig)
@@ -1944,8 +1960,15 @@ const initEditableContent = async () => {
     // 检查是否已经有内容，如果有则不自动开始漫游
     // 避免在标签页激活时覆盖已有的文档内容
     if (!currentRndId && !content) {
-      // 开始漫游
-      await doIncrementalRandomDoc()
+      // 🎯 关键修复：SQL筛选模式不自动开始漫游
+      if (filterMode !== FilterMode.SQL) {
+        // 开始漫游
+        await doIncrementalRandomDoc()
+      } else {
+        // SQL筛选模式：显示提示信息，等待用户点击应用筛选
+        content = "请输入SQL查询语句"
+        tips = "输入查询条件后，点击「应用筛选」按钮开始漫游"
+      }
     }
   })
 </script>

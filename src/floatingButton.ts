@@ -46,9 +46,7 @@ export async function initFloatingButton(pluginInstance: RandomDocPlugin) {
     pluginInstance.logger.info("主页面浮动按钮初始化成功")
     
     // 延迟显示提示
-    setTimeout(() => {
-      showMessage("💡 新功能：主页面右下角新增渐进式阅读快速启动按钮！", 4000, "info")
-    }, 3000)
+
     
   } catch (error) {
     pluginInstance.logger.error("初始化浮动按钮失败:", error)

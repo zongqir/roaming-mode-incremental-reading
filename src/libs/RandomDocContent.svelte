@@ -2025,12 +2025,14 @@ const initEditableContent = async () => {
           </div>
         {:else if filterMode === FilterMode.Root}
           <!-- 根文档选择器 -->
-          <button
-            class="action-item b3-select fn__flex-center fn__size150"
-            on:click={startDocumentSelection}
-          >
-            {currentDocTitle}
-          </button>
+          <div class="root-doc-selector">
+            <button
+              class="action-item b3-select fn__flex-center fn__size150"
+              on:click={startDocumentSelection}
+            >
+              {currentDocTitle}
+            </button>
+          </div>
         {:else if filterMode === FilterMode.Tag}
           <!-- 标签选择器 -->
           <div class="tag-selector">
@@ -2678,7 +2680,8 @@ const initEditableContent = async () => {
     }
     
     .action-btn-group .notebook-selector,
-    .action-btn-group .tag-selector {
+    .action-btn-group .tag-selector,
+    .action-btn-group .root-doc-selector {
       order: 1;
       flex: 1 1 auto;  /* 自适应占用剩余空间 */
       min-width: 0;  /* 允许收缩 */
@@ -2688,8 +2691,10 @@ const initEditableContent = async () => {
     /* 第三个筛选按钮：占用剩余空间但有最大宽度限制 */
     .action-btn-group .notebook-selector button.fn__size150,
     .action-btn-group .tag-selector button.fn__size150,
+    .action-btn-group .root-doc-selector button.fn__size150,
     .action-btn-group .notebook-selector button,
-    .action-btn-group .tag-selector button {
+    .action-btn-group .tag-selector button,
+    .action-btn-group .root-doc-selector button {
       width: 100% !important;  /* 占满父容器宽度 */
       min-width: 0 !important;  /* 允许收缩 */
       max-width: 100% !important;  /* 不超过父容器 */
@@ -2882,7 +2887,8 @@ const initEditableContent = async () => {
     }
     
     .action-btn-group .notebook-selector,
-    .action-btn-group .tag-selector {
+    .action-btn-group .tag-selector,
+    .action-btn-group .root-doc-selector {
       order: 1;
       flex: 1 1 auto;  /* 自适应占用剩余空间 */
       min-width: 0 !important;  /* 允许收缩 */
@@ -2899,8 +2905,10 @@ const initEditableContent = async () => {
     /* 第三个筛选按钮在超小屏幕：占满父容器 - 使用更高特异性覆盖fn__size150 */
     .action-btn-group .notebook-selector button.fn__size150,
     .action-btn-group .tag-selector button.fn__size150,
+    .action-btn-group .root-doc-selector button.fn__size150,
     .action-btn-group .notebook-selector button,
-    .action-btn-group .tag-selector button {
+    .action-btn-group .tag-selector button,
+    .action-btn-group .root-doc-selector button {
       width: 100% !important;  /* 占满父容器宽度 */
       min-width: 0 !important;  /* 允许收缩 */
       max-width: 100% !important;  /* 不超过父容器 */
@@ -3517,6 +3525,11 @@ const initEditableContent = async () => {
 
   /* 标签选择器样式 - 完全参照笔记本选择器 */
   .tag-selector
+    position: relative
+    display: inline-block
+  
+  /* 根文档选择器样式 - 完全参照笔记本选择器 */
+  .root-doc-selector
     position: relative
     display: inline-block
   

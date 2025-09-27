@@ -3405,9 +3405,20 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     transition: border-color 0.2s ease
     
     &.locked
-      background-color: var(--b3-theme-background)  /* 保持和解锁状态一样的背景色 */
+      background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface-light) 100%)
       color: var(--b3-theme-on-surface)
       cursor: not-allowed
+      border: 2px dashed var(--b3-theme-border)
+      position: relative
+      
+      &::before
+        content: "🔒"
+        position: absolute
+        top: 10px
+        right: 10px
+        font-size: 20px
+        opacity: 0.3
+        pointer-events: none
     
     &:focus:not(.locked)
       border-color: var(--b3-theme-primary)
@@ -4115,9 +4126,20 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     transition: all 0.2s ease
     
     &.locked
-      background-color: var(--b3-theme-background)
+      background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface-light) 100%)
       color: var(--b3-theme-on-surface)
       cursor: not-allowed
+      border: 2px dashed var(--b3-theme-border)
+      position: relative
+      
+      &::before
+        content: "🔒"
+        position: absolute
+        top: 8px
+        right: 8px
+        font-size: 16px
+        opacity: 0.4
+        pointer-events: none
       
     &:focus:not(.locked)
       box-shadow: inset 0 0 0 1px var(--b3-theme-primary)

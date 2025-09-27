@@ -2680,6 +2680,24 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
   </div>
 {/if}
 
+<!-- 手机端右下角浮动返回按钮 -->
+{#if pluginInstance.isMobile}
+  <button class="mobile-floating-back-btn" on:click={() => {
+    // 关闭整个渐进式漫游弹窗
+    if (pluginInstance.fullscreenContainer) {
+      pluginInstance.fullscreenContainer.remove();
+      pluginInstance.fullscreenContainer = null;
+    }
+    if (pluginInstance.tabContentInstance) {
+      pluginInstance.tabContentInstance.$destroy();
+      pluginInstance.tabContentInstance = null;
+    }
+  }}>
+    ✕
+  </button>
+{/if}
+
+
 <style lang="stylus">
 
   .custom-sql
@@ -3932,4 +3950,31 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
       
     &:focus:not(.locked)
       box-shadow: inset 0 0 0 1px var(--b3-theme-primary)
+
+  /* 手机端右下角浮动返回按钮 */
+  .mobile-floating-back-btn
+    position: fixed !important
+    bottom: 30px !important
+    right: 30px !important
+    width: 50px !important
+    height: 50px !important
+    border-radius: 25px !important
+    background-color: var(--b3-theme-primary) !important
+    color: white !important
+    border: none !important
+    font-size: 20px !important
+    cursor: pointer !important
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important
+    z-index: 9999 !important
+    transition: all 0.3s ease !important
+    display: flex !important
+    align-items: center !important
+    justify-content: center !important
+    
+    &:hover
+      background-color: var(--b3-theme-primary-light) !important
+      transform: scale(1.1) !important
+    
+    &:active
+      transform: scale(0.95) !important
 </style>

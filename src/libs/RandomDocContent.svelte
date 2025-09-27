@@ -111,6 +111,71 @@
   // 计算锁定状态下的只读内容
   $: lockedContent = editableContent.replace(/contenteditable="true"/g, 'contenteditable="false"').replace(/contenteditable='true'/g, 'contenteditable="false"')
 
+  // 浮动按钮拖拽相关
+  let floatingBtn: HTMLElement
+  let isDragging = false
+  let dragStartX = 0
+  let dragStartY = 0
+  let btnStartX = 0
+  let btnStartY = 0
+
+  const startDrag = (e: MouseEvent | TouchEvent) => {
+    e.preventDefault()
+    isDragging = true
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    dragStartX = clientX
+    dragStartY = clientY
+    
+    const rect = floatingBtn.getBoundingClientRect()
+    btnStartX = rect.left
+    btnStartY = rect.top
+    
+    // 添加全局事件监听
+    document.addEventListener('mousemove', handleDrag)
+    document.addEventListener('touchmove', handleDrag)
+    document.addEventListener('mouseup', endDrag)
+    document.addEventListener('touchend', endDrag)
+  }
+  
+  const handleDrag = (e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return
+    e.preventDefault()
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    const deltaX = clientX - dragStartX
+    const deltaY = clientY - dragStartY
+    
+    const newX = btnStartX + deltaX
+    const newY = btnStartY + deltaY
+    
+    // 限制在屏幕范围内
+    const maxX = window.innerWidth - floatingBtn.offsetWidth
+    const maxY = window.innerHeight - floatingBtn.offsetHeight
+    
+    const clampedX = Math.max(0, Math.min(newX, maxX))
+    const clampedY = Math.max(0, Math.min(newY, maxY))
+    
+    floatingBtn.style.left = clampedX + 'px'
+    floatingBtn.style.top = clampedY + 'px'
+    floatingBtn.style.right = 'auto'
+    floatingBtn.style.bottom = 'auto'
+  }
+  
+  const endDrag = () => {
+    isDragging = false
+    
+    // 移除全局事件监听
+    document.removeEventListener('mousemove', handleDrag)
+    document.removeEventListener('touchmove', handleDrag)
+    document.removeEventListener('mouseup', endDrag)
+    document.removeEventListener('touchend', endDrag)
+  }
+
   // 新增：已访问文档列表弹窗相关
   let showVisitedDialog = false
   let visitedDocs: Array<{id: string, content: string, lastTime?: string}> = []
@@ -2682,17 +2747,23 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
 
 <!-- 手机端右下角浮动返回按钮 -->
 {#if pluginInstance.isMobile}
-  <button class="mobile-floating-back-btn" on:click={() => {
-    // 关闭整个渐进式漫游弹窗
-    if (pluginInstance.fullscreenContainer) {
-      pluginInstance.fullscreenContainer.remove();
-      pluginInstance.fullscreenContainer = null;
-    }
-    if (pluginInstance.tabContentInstance) {
-      pluginInstance.tabContentInstance.$destroy();
-      pluginInstance.tabContentInstance = null;
-    }
-  }}>
+  <button 
+    class="mobile-floating-back-btn" 
+    bind:this={floatingBtn}
+    on:click={() => {
+      // 关闭整个渐进式漫游弹窗
+      if (pluginInstance.fullscreenContainer) {
+        pluginInstance.fullscreenContainer.remove();
+        pluginInstance.fullscreenContainer = null;
+      }
+      if (pluginInstance.tabContentInstance) {
+        pluginInstance.tabContentInstance.$destroy();
+        pluginInstance.tabContentInstance = null;
+      }
+    }}
+    on:mousedown={startDrag}
+    on:touchstart={startDrag}
+  >
     ✕
   </button>
 {/if}
@@ -3956,25 +4027,27 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     position: fixed !important
     bottom: 30px !important
     right: 30px !important
-    width: 50px !important
-    height: 50px !important
-    border-radius: 25px !important
+    width: 40px !important
+    height: 40px !important
+    border-radius: 20px !important
     background-color: var(--b3-theme-primary) !important
     color: white !important
     border: none !important
-    font-size: 20px !important
-    cursor: pointer !important
+    font-size: 14px !important
+    cursor: move !important
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important
     z-index: 9999 !important
-    transition: all 0.3s ease !important
+    transition: background-color 0.2s ease !important
     display: flex !important
     align-items: center !important
     justify-content: center !important
+    user-select: none !important
+    -webkit-user-select: none !important
+    touch-action: none !important
     
     &:hover
       background-color: var(--b3-theme-primary-light) !important
-      transform: scale(1.1) !important
     
     &:active
-      transform: scale(0.95) !important
+      background-color: var(--b3-theme-primary-dark) !important
 </style>

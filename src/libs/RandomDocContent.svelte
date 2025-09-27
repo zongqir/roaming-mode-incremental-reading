@@ -107,6 +107,9 @@
   let editableContent = "";
   let isEditing = false;
   let saveTimeout: any = null;
+  
+  // 计算锁定状态下的只读内容
+  $: lockedContent = editableContent.replace(/contenteditable="true"/g, 'contenteditable="false"').replace(/contenteditable='true'/g, 'contenteditable="false"')
 
   // 新增：已访问文档列表弹窗相关
   let showVisitedDialog = false
@@ -2502,13 +2505,9 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
           </button>
         </div>
         {#if $isLocked}
-          <div 
-            class="editable-content-area locked"
-            contenteditable="false"
-            spellcheck="false"
-            bind:innerHTML={editableContent}
-            on:click={refreshEditableContent}
-          ></div>
+          <div class="editable-content-area locked">
+            {@html lockedContent}
+          </div>
         {:else}
           <div 
             class="editable-content-area"

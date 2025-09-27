@@ -539,11 +539,10 @@
     docMetrics = []
 
     try {
-      // 检查渐进复习器是否已初始化
-      if (!pr) {
-        pr = new IncrementalReviewer(storeConfig, pluginInstance)
-        await pr.initIncrementalConfig()
-      }
+      // 🎯 关键修复：每次漫游都重新创建IncrementalReviewer实例，确保使用最新配置
+      // 这样可以确保筛选条件的实时更新，修复用户报告的筛选条件不生效问题
+      pr = new IncrementalReviewer(storeConfig, pluginInstance)
+      await pr.initIncrementalConfig()
       
       // 获取文档总数
       let total
@@ -570,7 +569,7 @@
 
       // 获取随机文档
       try {
-        result = await pr.getRandomDoc()
+        result = await pr.getRandomDoc(storeConfig)
         let newDocId, isAbsolutePriority = false
         if (typeof result === 'object' && result !== null && 'docId' in result) {
           newDocId = result.docId
@@ -744,7 +743,7 @@
       }
       
       // 获取已访问文档数量
-      const visitedCount = await pr.getVisitedCount()
+      const visitedCount = await pr.getVisitedCount(storeConfig)
       const remainingCount = total - visitedCount
       
       // 优先级顺序漫游提示
@@ -752,7 +751,7 @@
       if (typeof result === 'object' && result.isAbsolutePriority) {
         let rankText = "未知"
         try {
-          const priorityList = await pr.getPriorityList()
+          const priorityList = await pr.getPriorityList(storeConfig)
           const rank = priorityList.findIndex(doc => doc.id === currentRndId)
           if (rank !== -1) {
             rankText = (rank + 1).toString()
@@ -1004,7 +1003,7 @@
       await pr.initIncrementalConfig()
     }
     // 获取已访问文档及其上次漫游时间
-    const docs = await pr.getVisitedDocs()
+    const docs = await pr.getVisitedDocs(storeConfig)
     // 并发获取每个文档的上次漫游时间
     visitedDocs = await Promise.all(docs.map(async doc => {
       const lastTime = await pr.getRoamingLastTime(doc.id)
@@ -1115,7 +1114,7 @@
         if (!Array.isArray(res.data) || res.data.length === 0) break
       }
       // 获取已访问文档ID集合
-      const visitedDocs = await pr.getVisitedDocs()
+      const visitedDocs = await pr.getVisitedDocs(storeConfig)
       const visitedSet = new Set(visitedDocs.map(d => d.id))
       // 批量获取文档优先级属性
       const docIds = allDocs.map(doc => doc.id)
@@ -1214,7 +1213,7 @@
     
     try {
       // 使用新的getPriorityList方法获取所有文档的优先级
-      const latestPriorityList = await pr.getPriorityList();
+      const latestPriorityList = await pr.getPriorityList(storeConfig);
       
       // 如果存在currentRndId但列表中不存在，则可能是新文档，需要添加到列表中
       if (currentRndId && !latestPriorityList.some(p => p.id === currentRndId)) {

@@ -45,13 +45,15 @@
   import MetricsPanel from "./MetricsPanel.svelte"
   import PriorityBarChart from "./PriorityBarChart.svelte"
   import MobileFloatingActions from "./MobileFloatingActions.svelte"
+  import LockToggleButton from "./components/LockToggleButton.svelte"
+  import LockableContentArea from "./components/LockableContentArea.svelte"
+  import { setLocked } from "../stores/lockStore"
   import { isContentEmpty } from "../utils/utils"
   import { icons } from "../utils/svg"
   import { showSettingMenu } from "../topbar"
   import type { DocPriorityData } from "../models/IncrementalConfig"
   import type { DocBasicInfo } from "../models/IncrementalConfig"
   import type { Metric } from "../models/IncrementalConfig"
-  import { isLocked, toggleLock, setLocked } from "../stores/lockStore"
 
   // props
   export let pluginInstance: RandomDocPlugin
@@ -2664,41 +2666,28 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
       <div class="editable-area-container {pluginInstance.isMobile && filterMode === FilterMode.SQL ? 'mobile-sql-spacing' : ''}">
         <div class="editable-header">
           <span class="editable-title">{pluginInstance.isMobile ? title : "编辑区域"}</span>
-          <button class="lock-toggle-btn" on:click={toggleLock} title={$isLocked ? pluginInstance.i18n.unlockEditArea : pluginInstance.i18n.lockEditArea}>
-            {#if $isLocked}
-              🔒
-            {:else}
-              🔓
-            {/if}
-          </button>
+          <LockToggleButton {pluginInstance} />
         </div>
-        {#if $isLocked}
-          <div class="editable-content-area locked">
-            {@html lockedContent}
-          </div>
-        {:else}
-          <div 
-            class="editable-content-area"
-            contenteditable="true"
-            spellcheck="false"
-            bind:innerHTML={editableContent}
-            on:input={handleContentEdit}
-            on:blur={() => {
-              isEditing = false;
-              // 立即保存
-              if (saveTimeout) {
-                clearTimeout(saveTimeout);
-                saveContent(editableContent);
-              }
-            }}
-            on:focus={async () => {
-              isEditing = true;
-              // 在聚焦时刷新内容，确保与源文档同步
-              await refreshEditableContent();
-            }}
-            on:click={refreshEditableContent}
-          ></div>
-        {/if}
+        <LockableContentArea
+          {editableContent}
+          {lockedContent}
+          {isEditing}
+          onContentEdit={handleContentEdit}
+          onBlur={() => {
+            isEditing = false;
+            // 立即保存
+            if (saveTimeout) {
+              clearTimeout(saveTimeout);
+              saveContent(editableContent);
+            }
+          }}
+          onFocus={async () => {
+            isEditing = true;
+            // 在聚焦时刷新内容，确保与源文档同步
+            await refreshEditableContent();
+          }}
+          onClick={refreshEditableContent}
+        />
       </div>
     </div>
   </div>
@@ -2997,7 +2986,7 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
       height: 24px !important;
     }
     
-    /* 编辑区域锁定按钮移动端样式 - 和设置图标类似 */
+    /* 编辑区域头部移动端样式 */
     .editable-header {
       display: flex;
       justify-content: space-between;
@@ -3014,27 +3003,6 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
       color: var(--b3-theme-on-surface);
       text-align: center;  /* 居中显示 */
       flex: 1;  /* 占用剩余空间，让居中更明显 */
-    }
-    
-    /* 移动端锁定按钮样式 - 恢复显示 */
-    .editable-header .lock-toggle-btn {
-      width: calc(10% - 0.2vw) !important;  /* 和设置图标相同的宽度 */
-      min-height: 4vh !important;  /* 和设置图标相同的高度 */
-      padding: 0.8vh 0.4vw !important;  /* 增加内边距 */
-      font-size: 3.2vw !important;  /* 稍微增大图标尺寸 */
-      border: 1px solid var(--b3-border-color) !important;
-      border-radius: 6px !important;  /* 更圆润的圆角 */
-      background-color: var(--b3-theme-surface) !important;
-      color: var(--b3-theme-on-surface) !important;
-      cursor: pointer !important;
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;  /* 添加轻微阴影 */
-    }
-    
-    .lock-toggle-btn:hover {
-      background-color: var(--b3-theme-surface-hover);
     }
     
     /* 内容区域移动端比例化优化 */
@@ -3383,28 +3351,6 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     max-width: none !important  /* 不限制最大宽度 */
     min-width: 60px !important  /* 保持最小宽度 */
 
-  .editable-content-area
-    min-height: 400px
-    padding: 16px
-    border-radius: 6px
-    border: 1px solid var(--b3-border-color)
-    margin: 16px 0
-    background-color: var(--b3-theme-background)
-    outline: none
-    transition: border-color 0.2s ease
-    
-    &.locked
-      background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface-light) 100%)
-      color: var(--b3-theme-on-surface)
-      cursor: not-allowed
-      border: 2px dashed var(--b3-theme-border)
-    
-    &:focus:not(.locked)
-      border-color: var(--b3-theme-primary)
-      box-shadow: 0 0 0 2px var(--b3-theme-primary-lighter)
-    
-    &:hover
-      border-color: var(--b3-theme-primary-light)
 
   .visited-dialog-mask
     position fixed
@@ -4079,55 +4025,6 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     }
   }
 
-  /* 桌面端锁定按钮样式 */
-  @media (min-width: 769px) {
-    .lock-toggle-btn {
-      background: none;
-      border: 1px solid var(--b3-border-color);
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s ease;
-    }
-    
-    .lock-toggle-btn:hover {
-      background-color: var(--b3-theme-surface-light);
-      border-color: var(--b3-theme-primary);
-    }
-  }
 
-  /* 桌面端编辑内容区域样式 */
-  @media (min-width: 769px) {
-    .editable-content-area {
-      min-height: 200px;
-      padding: 12px;
-      background-color: var(--b3-theme-background);
-      outline: none;
-      transition: all 0.2s ease;
-      
-      &.locked {
-        background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface-light) 100%);
-        color: var(--b3-theme-on-surface);
-        cursor: not-allowed;
-        border: 2px dashed var(--b3-theme-border);
-        position: relative;
-        
-        &::before {
-          content: "🔒";
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          font-size: 16px;
-          opacity: 0.4;
-          pointer-events: none;
-        }
-      }
-      
-      &:focus:not(.locked) {
-        box-shadow: inset 0 0 0 1px var(--b3-theme-primary);
-      }
-    }
-  }
 
 </style>

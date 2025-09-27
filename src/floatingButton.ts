@@ -31,22 +31,28 @@ export async function initFloatingButton(pluginInstance: RandomDocPlugin) {
       return
     }
 
-    // 创建浮动按钮
-    const floatingButton = createFloatingButton(pluginInstance)
+    // 动态导入紫色浮动按钮组件
+    const { default: PurpleFloatingButton } = await import('./libs/components/PurpleFloatingButton.svelte')
     
-    // 添加到页面
-    document.body.appendChild(floatingButton)
+    // 创建容器元素
+    const container = document.createElement('div')
+    container.id = 'purple-floating-button-container'
+    document.body.appendChild(container)
+    
+    // 创建紫色浮动按钮组件实例
+    const buttonInstance = new PurpleFloatingButton({
+      target: container,
+      props: {
+        pluginInstance: pluginInstance,
+        onStartRoaming: () => startRoamingFromFloatingButton(pluginInstance)
+      }
+    })
     
     // 保存引用
-    pluginInstance.floatingButton = floatingButton
-    
-    // 监听页面变化，在主页面显示，在其他页面隐藏
-    setupPageVisibilityControl(pluginInstance, floatingButton)
+    pluginInstance.floatingButton = container
+    pluginInstance.purpleButtonInstance = buttonInstance
     
     pluginInstance.logger.info("主页面浮动按钮初始化成功")
-    
-    // 延迟显示提示
-
     
   } catch (error) {
     pluginInstance.logger.error("初始化浮动按钮失败:", error)
@@ -54,235 +60,7 @@ export async function initFloatingButton(pluginInstance: RandomDocPlugin) {
   }
 }
 
-/**
- * 创建浮动按钮元素
- */
-function createFloatingButton(pluginInstance: RandomDocPlugin): HTMLElement {
-  const button = document.createElement('div')
-  button.id = 'incremental-reading-floating-btn'
-  button.className = 'incremental-reading-floating'
-  
-  // 按钮样式
-  button.style.cssText = `
-    position: fixed;
-    bottom: 80px;
-    right: 20px;
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 50%;
-    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-    cursor: pointer;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-    user-select: none;
-    opacity: 0.9;
-  `
-  
-  // 按钮图标
-  button.innerHTML = `
-    <div style="
-      color: white;
-      font-size: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-    ">
-      ${icons.iconTopbar}
-    </div>
-  `
-  
-  // 添加悬停效果
-  button.addEventListener('mouseenter', () => {
-    button.style.transform = 'scale(1.1)'
-    button.style.boxShadow = '0 6px 25px rgba(102, 126, 234, 0.6)'
-  })
-  
-  button.addEventListener('mouseleave', () => {
-    button.style.transform = 'scale(1)'
-    button.style.boxShadow = '0 4px 20px rgba(102, 126, 234, 0.4)'
-  })
-  
-  // 桌面端点击事件（移动端在touchend中处理）
-  button.addEventListener('click', async (e) => {
-    // 只在非移动端处理点击事件
-    if (!pluginInstance.isMobile) {
-      await handleFloatingButtonClick(pluginInstance, button)
-    }
-  })
-  
-  // 触摸拖拽和长按功能（手机端）
-  let pressTimer: NodeJS.Timeout | null = null
-  let isDragging = false
-  let startX = 0
-  let startY = 0
-  let initialX = 0
-  let initialY = 0
-  let hasMoved = false
-  
-  button.addEventListener('touchstart', (e) => {
-    e.preventDefault()
-    
-    const touch = e.touches[0]
-    startX = touch.clientX
-    startY = touch.clientY
-    
-    // 获取按钮当前位置
-    const rect = button.getBoundingClientRect()
-    initialX = rect.left
-    initialY = rect.top
-    
-    isDragging = false
-    hasMoved = false
-    
-    // 长按定时器
-    pressTimer = setTimeout(() => {
-      if (!hasMoved) {
-        showQuickMenu(pluginInstance, button)
-      }
-    }, 800)
-  })
-  
-  button.addEventListener('touchmove', (e) => {
-    e.preventDefault()
-    
-    if (pressTimer) {
-      clearTimeout(pressTimer)
-      pressTimer = null
-    }
-    
-    const touch = e.touches[0]
-    const deltaX = touch.clientX - startX
-    const deltaY = touch.clientY - startY
-    
-    // 如果移动距离超过阈值，开始拖拽
-    if (!isDragging && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      isDragging = true
-      button.style.transition = 'none' // 拖拽时禁用过渡动画
-    }
-    
-    if (isDragging) {
-      hasMoved = true
-      const newX = initialX + deltaX
-      const newY = initialY + deltaY
-      
-      // 限制在屏幕范围内
-      const maxX = window.innerWidth - 60
-      const maxY = window.innerHeight - 60
-      const constrainedX = Math.max(20, Math.min(maxX, newX))
-      const constrainedY = Math.max(20, Math.min(maxY, newY))
-      
-      button.style.left = constrainedX + 'px'
-      button.style.top = constrainedY + 'px'
-      button.style.right = 'auto'
-      button.style.bottom = 'auto'
-    }
-  })
-  
-  button.addEventListener('touchend', (e) => {
-    e.preventDefault()
-    
-    if (pressTimer) {
-      clearTimeout(pressTimer)
-      pressTimer = null
-    }
-    
-    // 恢复过渡动画
-    button.style.transition = 'all 0.3s ease'
-    
-    // 如果没有拖拽且没有移动，触发点击
-    if (!isDragging && !hasMoved) {
-      handleFloatingButtonClick(pluginInstance, button)
-    }
-    
-    // 拖拽结束后吸附到边缘
-    if (isDragging) {
-      const rect = button.getBoundingClientRect()
-      const centerX = rect.left + rect.width / 2
-      const screenWidth = window.innerWidth
-      
-      // 吸附到左边或右边
-      if (centerX < screenWidth / 2) {
-        button.style.left = '20px'
-      } else {
-        button.style.left = 'auto'
-        button.style.right = '20px'
-      }
-      
-      // 保存位置到localStorage
-      const position = {
-        left: button.style.left,
-        right: button.style.right,
-        top: button.style.top,
-        bottom: button.style.bottom
-      }
-      localStorage.setItem('floating-button-position', JSON.stringify(position))
-    }
-    
-    isDragging = false
-    hasMoved = false
-  })
-  
-  // 恢复上次保存的位置
-  try {
-    const savedPosition = localStorage.getItem('floating-button-position')
-    if (savedPosition) {
-      const position = JSON.parse(savedPosition)
-      if (position.left && position.left !== 'auto') {
-        button.style.left = position.left
-        button.style.right = 'auto'
-      } else if (position.right && position.right !== 'auto') {
-        button.style.right = position.right
-        button.style.left = 'auto'
-      }
-      
-      if (position.top && position.top !== 'auto') {
-        button.style.top = position.top
-        button.style.bottom = 'auto'
-      } else if (position.bottom && position.bottom !== 'auto') {
-        button.style.bottom = position.bottom
-        button.style.top = 'auto'
-      }
-    }
-  } catch (error) {
-    pluginInstance.logger.warn('恢复浮动按钮位置失败:', error)
-  }
-  
-  return button
-}
 
-/**
- * 处理浮动按钮点击事件
- */
-async function handleFloatingButtonClick(pluginInstance: RandomDocPlugin, button: HTMLElement) {
-  try {
-    // 检查是否已经在漫游中
-    const isRoaming = !!(pluginInstance.tabContentInstance || pluginInstance.fullscreenContainer)
-    
-    if (isRoaming) {
-      showMessage('漫游已在进行中', 2000, 'info')
-      return
-    }
-    
-    // 添加点击动画
-    button.style.transform = 'scale(0.95)'
-    setTimeout(() => {
-      button.style.transform = 'scale(1)'
-    }, 150)
-    
-    // 启动漫游功能
-    await startRoamingFromFloatingButton(pluginInstance)
-    
-  } catch (error) {
-    pluginInstance.logger.error("浮动按钮启动漫游失败:", error)
-    showMessage("启动漫游失败: " + error.message, 3000, "error")
-  }
-}
 
 /**
  * 从浮动按钮启动漫游功能
@@ -427,115 +205,33 @@ function closeFullscreenModeFromFloating(pluginInstance: RandomDocPlugin, contai
   }
 }
 
-/**
- * 显示快速菜单（长按触发）
- */
-function showQuickMenu(pluginInstance: RandomDocPlugin, button: HTMLElement) {
-  // 简单的震动反馈（如果支持）
-  if (navigator.vibrate) {
-    navigator.vibrate(50)
-  }
-  
-  // 显示快速菜单选项
-  const menu = document.createElement('div')
-  menu.style.cssText = `
-    position: fixed;
-    bottom: 150px;
-    right: 20px;
-    background: var(--b3-theme-surface);
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-    padding: 8px 0;
-    z-index: 1001;
-    min-width: 120px;
-  `
-  
-  // 菜单项：打开设置
-  const settingItem = document.createElement('div')
-  settingItem.textContent = '插件设置'
-  settingItem.style.cssText = `
-    padding: 12px 16px;
-    cursor: pointer;
-    color: var(--b3-theme-on-surface);
-    transition: background-color 0.2s;
-  `
-  
-  settingItem.addEventListener('click', async () => {
-    menu.remove()
-    try {
-      const { showSettingMenu } = await import('./topbar')
-      showSettingMenu(pluginInstance)
-    } catch (error) {
-      showMessage('打开设置失败', 3000, 'error')
-    }
-  })
-  
-  menu.appendChild(settingItem)
-  document.body.appendChild(menu)
-  
-  // 点击其他地方关闭菜单
-  setTimeout(() => {
-    const closeMenu = () => {
-      menu.remove()
-      document.removeEventListener('click', closeMenu)
-    }
-    document.addEventListener('click', closeMenu)
-  }, 100)
-}
-
-/**
- * 设置页面可见性控制
- * 在主页面显示按钮，在其他页面隐藏
- */
-function setupPageVisibilityControl(pluginInstance: RandomDocPlugin, button: HTMLElement) {
-  // 检查当前是否在主页面的函数
-  const checkIsHomePage = () => {
-    // 检查URL或DOM结构来判断是否在主页面
-    const isHome = !document.querySelector('.layout-tab-container .protyle') && 
-                   !document.querySelector('.sy__file') &&
-                   document.querySelector('.b3-list')
-    return isHome
-  }
-  
-  // 更新按钮可见性
-  const updateButtonVisibility = () => {
-    const isHome = checkIsHomePage()
-    button.style.display = isHome ? 'flex' : 'none'
-  }
-  
-  // 初始检查
-  updateButtonVisibility()
-  
-  // 监听DOM变化
-  const observer = new MutationObserver(() => {
-    updateButtonVisibility()
-  })
-  
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  })
-  
-  // 监听路由变化
-  window.addEventListener('popstate', updateButtonVisibility)
-  
-  // 保存observer引用以便清理
-  pluginInstance.pageObserver = observer
-}
 
 /**
  * 移除浮动按钮
  */
 export function removeFloatingButton(pluginInstance: RandomDocPlugin) {
   try {
+    // 销毁紫色浮动按钮组件实例
+    if (pluginInstance.purpleButtonInstance) {
+      pluginInstance.purpleButtonInstance.$destroy()
+      pluginInstance.purpleButtonInstance = null
+    }
+    
+    // 移除容器
     if (pluginInstance.floatingButton) {
       pluginInstance.floatingButton.remove()
       pluginInstance.floatingButton = null
     }
     
+    // 清理观察器
     if (pluginInstance.pageObserver) {
       pluginInstance.pageObserver.disconnect()
       pluginInstance.pageObserver = null
+    }
+    
+    if (pluginInstance.purpleButtonObserver) {
+      pluginInstance.purpleButtonObserver.disconnect()
+      pluginInstance.purpleButtonObserver = null
     }
     
     pluginInstance.logger.info("浮动按钮已移除")

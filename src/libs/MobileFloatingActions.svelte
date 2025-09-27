@@ -6,6 +6,8 @@
 <script lang="ts">
   import { showMessage, openMobileFileById } from "siyuan"
   import type RandomDocPlugin from "../index"
+  import RedCloseButton from "./components/RedCloseButton.svelte"
+  import DiceRoamButton from "./components/DiceRoamButton.svelte"
 
   // Props
   export let pluginInstance: RandomDocPlugin
@@ -13,12 +15,6 @@
   export let isLoading: boolean = false
   export let onCloseAction: () => void = () => {}
   export let onRoamAction: () => void = () => {}
-
-  // 浮动按钮拖拽相关变量
-  let floatingBtn: HTMLElement
-  let floatingRoamBtn: HTMLElement
-  let hasActuallyDragged = false
-  let hasRoamActuallyDragged = false
 
   // 智能消息显示函数：在全屏模式下使用自定义消息，否则使用SiYuan原生消息
   const smartShowMessage = (message: string, duration: number = 3000, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
@@ -54,7 +50,7 @@
           pluginInstance.logger.info("准备打开文档:", docToOpen)
           
           // 使用移动端专用API打开文档
-          const result = await openMobileFileById(pluginInstance.app, docToOpen)
+          const result = await openMobileFileById(pluginInstance.app, docToOpen, [])
           pluginInstance.logger.info("openMobileFileById 调用成功:", result)
           
           smartShowMessage("已跳转到当前文档", 2000, 'success')
@@ -71,48 +67,15 @@
     }
   }
 
-  // 拖拽相关函数
-  function startDrag(e) {
-    hasActuallyDragged = false
-    // 拖拽逻辑可以根据需要实现
-  }
-
-  function startRoamDrag(e) {
-    hasRoamActuallyDragged = false
-    // 拖拽逻辑可以根据需要实现
-  }
-
-  // 处理关闭按钮点击
-  function handleCloseClick(e) {
-    if (hasActuallyDragged) {
-      e.preventDefault()
-      return
-    }
-    onCloseAction()
-  }
-
-  // 处理漫游按钮点击
-  function handleRoamClick(e) {
-    if (hasRoamActuallyDragged) {
-      e.preventDefault()
-      return
-    }
-    onRoamAction()
-  }
 </script>
 
 <!-- 手机端浮动按钮组 -->
 {#if pluginInstance.isMobile}
-  <!-- 关闭按钮 -->
-  <button 
-    class="mobile-floating-back-btn" 
-    bind:this={floatingBtn}
-    on:click={handleCloseClick}
-    on:mousedown={startDrag}
-    on:touchstart={startDrag}
-  >
-    ✕
-  </button>
+  <!-- 红色关闭按钮 -->
+  <RedCloseButton 
+    {pluginInstance}
+    {onCloseAction}
+  />
 
   <!-- 跳转到文档按钮 -->
   {#if currentRndId}
@@ -128,84 +91,42 @@
     </button>
   {/if}
 
-  <!-- 漫游按钮 -->
-  <button 
-    class="mobile-floating-roam-btn" 
-    bind:this={floatingRoamBtn}
-    on:click={handleRoamClick}
-    on:mousedown={startRoamDrag}
-    on:touchstart={startRoamDrag}
-    disabled={isLoading}
-  >
-    {#if isLoading}
-      ⏳
-    {:else}
-      🎲
-    {/if}
-  </button>
+  <!-- 筛子漫游按钮 -->
+  <DiceRoamButton 
+    {pluginInstance}
+    {isLoading}
+    onRoamAction={onRoamAction}
+  />
 {/if}
 
 <style lang="stylus">
-  /* 手机端浮动按钮共同样式 */
-  .mobile-floating-back-btn,
-  .mobile-floating-roam-btn,
+  /* 跳转到文档按钮 - 绿色，右下角中间位置 */
   .mobile-floating-jump-btn
     position: fixed !important
+    bottom: 130px !important
+    right: 30px !important
     width: 40px !important
     height: 40px !important
     border-radius: 20px !important
+    background-color: #28a745 !important
     color: white !important
     border: none !important
     font-size: 14px !important
-    cursor: move !important
+    cursor: pointer !important
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important
     z-index: 9999 !important
-    transition: background-color 0.2s ease !important
+    transition: all 0.3s ease !important
     display: flex !important
     align-items: center !important
     justify-content: center !important
     user-select: none !important
     -webkit-user-select: none !important
-    touch-action: none !important
-
-  /* 关闭按钮 - 红色，右下角 */
-  .mobile-floating-back-btn
-    bottom: 30px !important
-    right: 30px !important
-    background-color: #dc3545 !important
-    
-    &:hover
-      background-color: #c82333 !important
-    
-    &:active
-      background-color: #bd2130 !important
-
-  /* 跳转到文档按钮 - 绿色，右下角中间位置 */
-  .mobile-floating-jump-btn
-    bottom: 130px !important
-    right: 30px !important
-    background-color: #28a745 !important
     
     &:hover
       background-color: #218838 !important
+      transform: scale(1.05) !important
     
     &:active
       background-color: #1e7e34 !important
-
-  /* 漫游按钮 - 蓝色，右下角偏上 */
-  .mobile-floating-roam-btn
-    bottom: 80px !important
-    right: 30px !important
-    background-color: var(--b3-theme-primary) !important
-    
-    &:hover
-      background-color: var(--b3-theme-primary-light) !important
-    
-    &:active
-      background-color: var(--b3-theme-primary-dark) !important
-      
-    &:disabled
-      background-color: #6c757d !important
-      cursor: not-allowed !important
-      opacity: 0.8 !important
+      transform: scale(0.95) !important
 </style>

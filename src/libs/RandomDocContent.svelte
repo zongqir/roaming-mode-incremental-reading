@@ -3398,16 +3398,6 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
       color: var(--b3-theme-on-surface)
       cursor: not-allowed
       border: 2px dashed var(--b3-theme-border)
-      position: relative
-      
-      &::before
-        content: "🔒"
-        position: absolute
-        top: 10px
-        right: 10px
-        font-size: 20px
-        opacity: 0.3
-        pointer-events: none
     
     &:focus:not(.locked)
       border-color: var(--b3-theme-primary)
@@ -4107,30 +4097,37 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     }
   }
 
-  .editable-content-area
-    min-height: 200px
-    padding: 12px
-    background-color: var(--b3-theme-background)
-    outline: none
-    transition: all 0.2s ease
-    
-    &.locked
-      background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface-light) 100%)
-      color: var(--b3-theme-on-surface)
-      cursor: not-allowed
-      border: 2px dashed var(--b3-theme-border)
-      position: relative
+  /* 桌面端编辑内容区域样式 */
+  @media (min-width: 769px) {
+    .editable-content-area {
+      min-height: 200px;
+      padding: 12px;
+      background-color: var(--b3-theme-background);
+      outline: none;
+      transition: all 0.2s ease;
       
-      &::before
-        content: "🔒"
-        position: absolute
-        top: 8px
-        right: 8px
-        font-size: 16px
-        opacity: 0.4
-        pointer-events: none
+      &.locked {
+        background: linear-gradient(135deg, var(--b3-theme-background) 0%, var(--b3-theme-surface-light) 100%);
+        color: var(--b3-theme-on-surface);
+        cursor: not-allowed;
+        border: 2px dashed var(--b3-theme-border);
+        position: relative;
+        
+        &::before {
+          content: "🔒";
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          font-size: 16px;
+          opacity: 0.4;
+          pointer-events: none;
+        }
+      }
       
-    &:focus:not(.locked)
-      box-shadow: inset 0 0 0 1px var(--b3-theme-primary)
+      &:focus:not(.locked) {
+        box-shadow: inset 0 0 0 1px var(--b3-theme-primary);
+      }
+    }
+  }
 
 </style>

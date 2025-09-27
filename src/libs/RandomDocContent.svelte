@@ -113,15 +113,18 @@
 
   // 浮动按钮拖拽相关
   let floatingBtn: HTMLElement
+  let floatingRoamBtn: HTMLElement
   let isDragging = false
+  let isRoamDragging = false
   let dragStartX = 0
   let dragStartY = 0
   let btnStartX = 0
   let btnStartY = 0
+  let hasActuallyDragged = false
 
   const startDrag = (e: MouseEvent | TouchEvent) => {
-    e.preventDefault()
     isDragging = true
+    hasActuallyDragged = false
     
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
@@ -142,13 +145,18 @@
   
   const handleDrag = (e: MouseEvent | TouchEvent) => {
     if (!isDragging) return
-    e.preventDefault()
     
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
     
     const deltaX = clientX - dragStartX
     const deltaY = clientY - dragStartY
+    
+    // 如果移动距离超过5px，则认为是真正的拖拽
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      hasActuallyDragged = true
+      e.preventDefault()
+    }
     
     const newX = btnStartX + deltaX
     const newY = btnStartY + deltaY
@@ -174,6 +182,71 @@
     document.removeEventListener('touchmove', handleDrag)
     document.removeEventListener('mouseup', endDrag)
     document.removeEventListener('touchend', endDrag)
+  }
+
+  // 漫游按钮拖拽函数
+  let hasRoamActuallyDragged = false
+  
+  const startRoamDrag = (e: MouseEvent | TouchEvent) => {
+    isRoamDragging = true
+    hasRoamActuallyDragged = false
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    dragStartX = clientX
+    dragStartY = clientY
+    
+    const rect = floatingRoamBtn.getBoundingClientRect()
+    btnStartX = rect.left
+    btnStartY = rect.top
+    
+    // 添加全局事件监听
+    document.addEventListener('mousemove', handleRoamDrag)
+    document.addEventListener('touchmove', handleRoamDrag)
+    document.addEventListener('mouseup', endRoamDrag)
+    document.addEventListener('touchend', endRoamDrag)
+  }
+  
+  const handleRoamDrag = (e: MouseEvent | TouchEvent) => {
+    if (!isRoamDragging) return
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    const deltaX = clientX - dragStartX
+    const deltaY = clientY - dragStartY
+    
+    // 如果移动距离超过5px，则认为是真正的拖拽
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      hasRoamActuallyDragged = true
+      e.preventDefault()
+    }
+    
+    const newX = btnStartX + deltaX
+    const newY = btnStartY + deltaY
+    
+    // 限制在屏幕范围内
+    const maxX = window.innerWidth - floatingRoamBtn.offsetWidth
+    const maxY = window.innerHeight - floatingRoamBtn.offsetHeight
+    
+    const clampedX = Math.max(0, Math.min(newX, maxX))
+    const clampedY = Math.max(0, Math.min(newY, maxY))
+    
+    floatingRoamBtn.style.left = clampedX + 'px'
+    floatingRoamBtn.style.top = clampedY + 'px'
+    floatingRoamBtn.style.right = 'auto'
+    floatingRoamBtn.style.bottom = 'auto'
+  }
+  
+  const endRoamDrag = () => {
+    isRoamDragging = false
+    
+    // 移除全局事件监听
+    document.removeEventListener('mousemove', handleRoamDrag)
+    document.removeEventListener('touchmove', handleRoamDrag)
+    document.removeEventListener('mouseup', endRoamDrag)
+    document.removeEventListener('touchend', endRoamDrag)
   }
 
   // 新增：已访问文档列表弹窗相关
@@ -2745,12 +2818,17 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
   </div>
 {/if}
 
-<!-- 手机端右下角浮动返回按钮 -->
+<!-- 手机端浮动按钮组 -->
 {#if pluginInstance.isMobile}
+  <!-- 关闭按钮 -->
   <button 
     class="mobile-floating-back-btn" 
     bind:this={floatingBtn}
-    on:click={() => {
+    on:click={(e) => {
+      if (hasActuallyDragged) {
+        e.preventDefault()
+        return
+      }
       // 关闭整个渐进式漫游弹窗
       if (pluginInstance.fullscreenContainer) {
         pluginInstance.fullscreenContainer.remove();
@@ -2765,6 +2843,28 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     on:touchstart={startDrag}
   >
     ✕
+  </button>
+
+  <!-- 漫游按钮 -->
+  <button 
+    class="mobile-floating-roam-btn" 
+    bind:this={floatingRoamBtn}
+    on:click={(e) => {
+      if (hasRoamActuallyDragged) {
+        e.preventDefault()
+        return
+      }
+      doIncrementalRandomDoc()
+    }}
+    on:mousedown={startRoamDrag}
+    on:touchstart={startRoamDrag}
+    disabled={isLoading}
+  >
+    {#if isLoading}
+      ⏳
+    {:else}
+      🎲
+    {/if}
   </button>
 {/if}
 
@@ -4022,15 +4122,13 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     &:focus:not(.locked)
       box-shadow: inset 0 0 0 1px var(--b3-theme-primary)
 
-  /* 手机端右下角浮动返回按钮 */
-  .mobile-floating-back-btn
+  /* 手机端浮动按钮共同样式 */
+  .mobile-floating-back-btn,
+  .mobile-floating-roam-btn
     position: fixed !important
-    bottom: 30px !important
-    right: 30px !important
     width: 40px !important
     height: 40px !important
     border-radius: 20px !important
-    background-color: var(--b3-theme-primary) !important
     color: white !important
     border: none !important
     font-size: 14px !important
@@ -4044,10 +4142,33 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     user-select: none !important
     -webkit-user-select: none !important
     touch-action: none !important
+
+  /* 关闭按钮 - 红色，右下角 */
+  .mobile-floating-back-btn
+    bottom: 30px !important
+    right: 30px !important
+    background-color: #dc3545 !important
+    
+    &:hover
+      background-color: #c82333 !important
+    
+    &:active
+      background-color: #bd2130 !important
+
+  /* 漫游按钮 - 蓝色，右下角偏上 */
+  .mobile-floating-roam-btn
+    bottom: 80px !important
+    right: 30px !important
+    background-color: var(--b3-theme-primary) !important
     
     &:hover
       background-color: var(--b3-theme-primary-light) !important
     
     &:active
       background-color: var(--b3-theme-primary-dark) !important
+      
+    &:disabled
+      background-color: #6c757d !important
+      cursor: not-allowed !important
+      opacity: 0.8 !important
 </style>

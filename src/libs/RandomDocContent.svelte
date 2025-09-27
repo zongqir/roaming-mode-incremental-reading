@@ -44,6 +44,7 @@
   import IncrementalReviewer from "../service/IncrementalReviewer"
   import MetricsPanel from "./MetricsPanel.svelte"
   import PriorityBarChart from "./PriorityBarChart.svelte"
+  import MobileFloatingActions from "./MobileFloatingActions.svelte"
   import { isContentEmpty } from "../utils/utils"
   import { icons } from "../utils/svg"
   import { showSettingMenu } from "../topbar"
@@ -1036,6 +1037,35 @@
       doc: { id: docId }
     })
   }
+
+  // 处理浮窗关闭操作
+  function handleFloatingClose() {
+    try {
+      // 关闭渐进阅读模式
+      if (pluginInstance.isMobile && pluginInstance.fullscreenContainer) {
+        // 移动端全屏模式
+        pluginInstance.fullscreenContainer.remove()
+        
+        // 清理组件实例
+        if (pluginInstance.tabContentInstance) {
+          pluginInstance.tabContentInstance.$destroy()
+          pluginInstance.tabContentInstance = null
+        }
+        
+        // 清理引用
+        pluginInstance.fullscreenContainer = null
+        
+        pluginInstance.logger.info("移动端渐进阅读已关闭")
+      } else if (pluginInstance.tabInstance) {
+        // 桌面端标签页模式
+        pluginInstance.tabInstance.close()
+        pluginInstance.tabInstance = null
+      }
+    } catch (error) {
+      pluginInstance.logger.error("关闭渐进阅读失败:", error)
+    }
+  }
+
 
   // 新增：格式化文档ID为日期（如需更复杂格式可后续完善）
   function formatDocIdToDate(docId: string): string {
@@ -2818,55 +2848,14 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
   </div>
 {/if}
 
-<!-- 手机端浮动按钮组 -->
-{#if pluginInstance.isMobile}
-  <!-- 关闭按钮 -->
-  <button 
-    class="mobile-floating-back-btn" 
-    bind:this={floatingBtn}
-    on:click={(e) => {
-      if (hasActuallyDragged) {
-        e.preventDefault()
-        return
-      }
-      // 关闭整个渐进式漫游弹窗
-      if (pluginInstance.fullscreenContainer) {
-        pluginInstance.fullscreenContainer.remove();
-        pluginInstance.fullscreenContainer = null;
-      }
-      if (pluginInstance.tabContentInstance) {
-        pluginInstance.tabContentInstance.$destroy();
-        pluginInstance.tabContentInstance = null;
-      }
-    }}
-    on:mousedown={startDrag}
-    on:touchstart={startDrag}
-  >
-    ✕
-  </button>
-
-  <!-- 漫游按钮 -->
-  <button 
-    class="mobile-floating-roam-btn" 
-    bind:this={floatingRoamBtn}
-    on:click={(e) => {
-      if (hasRoamActuallyDragged) {
-        e.preventDefault()
-        return
-      }
-      doIncrementalRandomDoc()
-    }}
-    on:mousedown={startRoamDrag}
-    on:touchstart={startRoamDrag}
-    disabled={isLoading}
-  >
-    {#if isLoading}
-      ⏳
-    {:else}
-      🎲
-    {/if}
-  </button>
-{/if}
+<!-- 移动端浮动操作按钮组 -->
+<MobileFloatingActions 
+  {pluginInstance}
+  {currentRndId}
+  {isLoading}
+  onCloseAction={handleFloatingClose}
+  onRoamAction={doIncrementalRandomDoc}
+/>
 
 
 <style lang="stylus">
@@ -4144,53 +4133,4 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
     &:focus:not(.locked)
       box-shadow: inset 0 0 0 1px var(--b3-theme-primary)
 
-  /* 手机端浮动按钮共同样式 */
-  .mobile-floating-back-btn,
-  .mobile-floating-roam-btn
-    position: fixed !important
-    width: 40px !important
-    height: 40px !important
-    border-radius: 20px !important
-    color: white !important
-    border: none !important
-    font-size: 14px !important
-    cursor: move !important
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important
-    z-index: 9999 !important
-    transition: background-color 0.2s ease !important
-    display: flex !important
-    align-items: center !important
-    justify-content: center !important
-    user-select: none !important
-    -webkit-user-select: none !important
-    touch-action: none !important
-
-  /* 关闭按钮 - 红色，右下角 */
-  .mobile-floating-back-btn
-    bottom: 30px !important
-    right: 30px !important
-    background-color: #dc3545 !important
-    
-    &:hover
-      background-color: #c82333 !important
-    
-    &:active
-      background-color: #bd2130 !important
-
-  /* 漫游按钮 - 蓝色，右下角偏上 */
-  .mobile-floating-roam-btn
-    bottom: 80px !important
-    right: 30px !important
-    background-color: var(--b3-theme-primary) !important
-    
-    &:hover
-      background-color: var(--b3-theme-primary-light) !important
-    
-    &:active
-      background-color: var(--b3-theme-primary-dark) !important
-      
-    &:disabled
-      background-color: #6c757d !important
-      cursor: not-allowed !important
-      opacity: 0.8 !important
 </style>

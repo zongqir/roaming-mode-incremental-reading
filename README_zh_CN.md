@@ -185,6 +185,23 @@
     <div style="margin-top: 1.5em; padding: 1.5em; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 8px; box-shadow: 0 4px 12px rgba(34,197,94,0.15);">
         <h2 style="color: #16a34a; margin: 0 0 1em; text-align: center; font-size: 1.3em;">🚀 近期更新</h2>
 
+<strong style="color: #6366f1; font-size: 1.1em;">📅 v3.0.3版本更新 (2025.9.28)</strong>
+<ul style="margin: 0.5em 0; padding-left: 1.2em;">
+<li style="margin: 0.3em 0;"><strong style="color: #10b981;">🆕 新增功能</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>📱 手机布局优化</strong>: 优化了手机布局，提升移动端使用体验</li>
+<li><strong>🎯 浮动按钮优化</strong>: 浮动按钮优化，操作更加流畅</li>
+<li><strong>📂 手机Tab支持</strong>: 手机支持直接打开tab，功能更完善</li>
+</ul>
+</li>
+<li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 缺陷修复</strong>
+<ul style="margin: 0.2em 0; padding-left: 1em;">
+<li><strong>✏️ 编辑问题修复</strong>: 编辑问题修复，确保编辑功能正常运行</li>
+</ul>
+</li>
+</ul>
+<hr style="margin: 1.5em 0; border: none; border-top: 1px solid #e0e7ff;">
+
 <strong style="color: #6366f1; font-size: 1.1em;">📅 v3.0.2版本更新 (2025.9.24)</strong>
 <ul style="margin: 0.5em 0; padding-left: 1.2em;">
 <li style="margin: 0.3em 0;"><strong style="color: #ef4444;">🐛 缺陷修复</strong>

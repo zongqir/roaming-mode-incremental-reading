@@ -2664,7 +2664,7 @@ SELECT id FROM blocks WHERE type = 'd' AND content LIKE '%学习%'"
       {/if}
       <div class="editable-area-container {pluginInstance.isMobile && filterMode === FilterMode.SQL ? 'mobile-sql-spacing' : ''}">
         <div class="editable-header">
-          <span class="editable-title">{pluginInstance.isMobile ? title : "编辑区域"}</span>
+          <span class="editable-title">{pluginInstance.isMobile ? title : `编辑区域 - ${title}`}</span>
           <LockToggleButton {pluginInstance} />
         </div>
         <LockableContentArea

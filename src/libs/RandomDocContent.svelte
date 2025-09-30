@@ -114,7 +114,143 @@
   // 计算锁定状态下的只读内容
   $: lockedContent = editableContent.replace(/contenteditable="true"/g, 'contenteditable="false"').replace(/contenteditable='true'/g, 'contenteditable="false"')
 
+  // 浮动按钮拖拽相关
+  let floatingBtn: HTMLElement
+  let floatingRoamBtn: HTMLElement
+  let isDragging = false
+  let isRoamDragging = false
+  let dragStartX = 0
+  let dragStartY = 0
+  let btnStartX = 0
+  let btnStartY = 0
+  let hasActuallyDragged = false
 
+  const startDrag = (e: MouseEvent | TouchEvent) => {
+    isDragging = true
+    hasActuallyDragged = false
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    dragStartX = clientX
+    dragStartY = clientY
+    
+    const rect = floatingBtn.getBoundingClientRect()
+    btnStartX = rect.left
+    btnStartY = rect.top
+    
+    // 添加全局事件监听
+    document.addEventListener('mousemove', handleDrag)
+    document.addEventListener('touchmove', handleDrag)
+    document.addEventListener('mouseup', endDrag)
+    document.addEventListener('touchend', endDrag)
+  }
+  
+  const handleDrag = (e: MouseEvent | TouchEvent) => {
+    if (!isDragging) return
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    const deltaX = clientX - dragStartX
+    const deltaY = clientY - dragStartY
+    
+    // 如果移动距离超过5px，则认为是真正的拖拽
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      hasActuallyDragged = true
+      e.preventDefault()
+    }
+    
+    const newX = btnStartX + deltaX
+    const newY = btnStartY + deltaY
+    
+    // 限制在屏幕范围内
+    const maxX = window.innerWidth - floatingBtn.offsetWidth
+    const maxY = window.innerHeight - floatingBtn.offsetHeight
+    
+    const clampedX = Math.max(0, Math.min(newX, maxX))
+    const clampedY = Math.max(0, Math.min(newY, maxY))
+    
+    floatingBtn.style.left = clampedX + 'px'
+    floatingBtn.style.top = clampedY + 'px'
+    floatingBtn.style.right = 'auto'
+    floatingBtn.style.bottom = 'auto'
+  }
+  
+  const endDrag = () => {
+    isDragging = false
+    
+    // 移除全局事件监听
+    document.removeEventListener('mousemove', handleDrag)
+    document.removeEventListener('touchmove', handleDrag)
+    document.removeEventListener('mouseup', endDrag)
+    document.removeEventListener('touchend', endDrag)
+  }
+
+  // 漫游按钮拖拽函数
+  let hasRoamActuallyDragged = false
+  
+  const startRoamDrag = (e: MouseEvent | TouchEvent) => {
+    isRoamDragging = true
+    hasRoamActuallyDragged = false
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    dragStartX = clientX
+    dragStartY = clientY
+    
+    const rect = floatingRoamBtn.getBoundingClientRect()
+    btnStartX = rect.left
+    btnStartY = rect.top
+    
+    // 添加全局事件监听
+    document.addEventListener('mousemove', handleRoamDrag)
+    document.addEventListener('touchmove', handleRoamDrag)
+    document.addEventListener('mouseup', endRoamDrag)
+    document.addEventListener('touchend', endRoamDrag)
+  }
+  
+  const handleRoamDrag = (e: MouseEvent | TouchEvent) => {
+    if (!isRoamDragging) return
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
+    
+    const deltaX = clientX - dragStartX
+    const deltaY = clientY - dragStartY
+    
+    // 如果移动距离超过5px，则认为是真正的拖拽
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      hasRoamActuallyDragged = true
+      e.preventDefault()
+    }
+    
+    const newX = btnStartX + deltaX
+    const newY = btnStartY + deltaY
+    
+    // 限制在屏幕范围内
+    const maxX = window.innerWidth - floatingRoamBtn.offsetWidth
+    const maxY = window.innerHeight - floatingRoamBtn.offsetHeight
+    
+    const clampedX = Math.max(0, Math.min(newX, maxX))
+    const clampedY = Math.max(0, Math.min(newY, maxY))
+    
+    floatingRoamBtn.style.left = clampedX + 'px'
+    floatingRoamBtn.style.top = clampedY + 'px'
+    floatingRoamBtn.style.right = 'auto'
+    floatingRoamBtn.style.bottom = 'auto'
+  }
+  
+  const endRoamDrag = () => {
+    isRoamDragging = false
+    
+    // 移除全局事件监听
+    document.removeEventListener('mousemove', handleRoamDrag)
+    document.removeEventListener('touchmove', handleRoamDrag)
+    document.removeEventListener('mouseup', endRoamDrag)
+    document.removeEventListener('touchend', endRoamDrag)
+  }
 
   // 新增：已访问文档列表弹窗相关
   let showVisitedDialog = false
